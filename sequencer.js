@@ -3,6 +3,7 @@
  * - 10 Drum-Stimmen, 4 Pattern-Slots, 1-4 Takte pro Pattern
  * - Echte akustische Drum-Samples (Oramics Pearl Master Studio)
  * - Drummer-Regeln: Hi-Hat-Mutex, max 2 Toms gleichzeitig
+ * - Einfaches Takt-Copy/Paste
  * - Notenblatt-Export als PDF über VexFlow
  */
 
@@ -26,53 +27,18 @@
     { id: 'kd', label: 'Kick',       group: 'drum',   sample: 'kick-01.wav' }
   ];
 
-  const PRESETS = {
-    rock: {
-      hh: [1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1],
-      sn: [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
-      kd: [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0]
-    },
-    funk: {
-      hh: [1,0,1,1, 1,0,1,1, 1,0,1,1, 1,0,1,1],
-      sn: [0,0,0,0, 1,0,0,1, 0,0,1,0, 1,0,0,0],
-      kd: [1,0,0,1, 0,0,1,0, 0,1,0,0, 0,0,1,0]
-    },
-    linear: {
-      hh: [1,0,1,0, 1,0,0,0, 1,0,1,0, 1,0,1,0],
-      oh: [0,0,0,0, 0,0,1,0, 0,0,0,0, 0,0,0,0],
-      sn: [0,0,0,0, 1,0,0,0, 0,0,0,1, 1,0,0,1],
-      kd: [1,0,0,1, 0,0,1,0, 0,1,0,0, 0,0,1,0]
-    },
-    shuffle: {
-      hh: [1,0,1,1, 0,1,1,0, 1,1,0,1, 1,0,1,0],
-      sn: [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
-      kd: [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0]
-    },
-    four: {
-      ri: [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
-      sn: [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
-      kd: [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0]
-    },
-    hiphop: {
-      hh: [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
-      sn: [0,0,0,0, 1,0,0,0, 0,0,1,0, 1,0,0,0],
-      kd: [1,0,0,0, 0,0,1,0, 0,1,0,0, 0,0,0,0]
-    },
-    jazz: {
-      ri: [1,0,0,1, 1,0,1,0, 1,0,0,1, 1,0,1,0],
-      ph: [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
-      sn: [0,0,1,0, 0,0,0,1, 0,0,0,0, 0,0,1,0],
-      kd: [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0]
-    },
-    tomroll: {
-      cr: [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
-      hh: [0,0,1,0, 1,0,1,0, 1,0,1,0, 0,0,0,0],
-      sn: [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
-      kd: [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
-      th: [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,1,0,0],
-      tm: [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,1,0],
-      tl: [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1]
-    }
+  // Pro-Drum-Lautstärke (Multiplier)
+  const DRUM_GAIN = {
+    kd: 1.15,
+    sn: 1.05,
+    hh: 0.80,
+    oh: 0.90,
+    ph: 0.30,  // deutlich leiser als closed, auch akustisch realistisch
+    th: 1.00,
+    tm: 1.00,
+    tl: 1.00,
+    ri: 0.80,
+    cr: 1.00
   };
 
   const HIHAT_IDS = ['hh', 'oh', 'ph'];
@@ -142,14 +108,12 @@
     playing: false,
     currentStep: -1,
     chainMode: false,
-    chainPlayingSlot: 'A'
+    chainPlayingSlot: 'A',
+    barClipboard: null  // kopierter Takt: {kd: [16], sn: [16], ...}
   };
 
   SLOTS.forEach(slot => {
     state.patterns[slot] = { bars: 1, data: emptyPattern(1) };
-  });
-  Object.keys(PRESETS.rock).forEach(k => {
-    state.patterns.A.data[k] = PRESETS.rock[k].slice();
   });
 
   const currentSlot = () => state.patterns[state.currentSlot];
@@ -159,7 +123,9 @@
 
   const audio = {
     ctx: null,
+    masterGain: null,
     buffers: {},
+    hihatFilters: {}, // für Pedal-HH: eigener Lowpass
     usingSamples: false,
     loading: false,
     loadPromise: null
@@ -169,6 +135,9 @@
     if (!audio.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       audio.ctx = new AC();
+      audio.masterGain = audio.ctx.createGain();
+      audio.masterGain.gain.value = 1.0;
+      audio.masterGain.connect(audio.ctx.destination);
     }
     if (audio.ctx.state === 'suspended') audio.ctx.resume();
     return audio.ctx;
@@ -186,10 +155,18 @@
     audio.loading = true;
     setStatus('Lade akustische Drum-Samples…');
 
-    audio.loadPromise = Promise.all(TRACKS.map(t =>
-      loadSampleBuffer(SAMPLE_BASE + t.sample)
-        .then(buf => { audio.buffers[t.id] = buf; })
-        .catch(err => { console.warn('Sample fail', t.id, err); })
+    const uniqueSamples = {};
+    TRACKS.forEach(t => {
+      if (!uniqueSamples[t.sample]) uniqueSamples[t.sample] = [];
+      uniqueSamples[t.sample].push(t.id);
+    });
+
+    audio.loadPromise = Promise.all(Object.keys(uniqueSamples).map(sampleFile =>
+      loadSampleBuffer(SAMPLE_BASE + sampleFile)
+        .then(buf => {
+          uniqueSamples[sampleFile].forEach(id => { audio.buffers[id] = buf; });
+        })
+        .catch(err => { console.warn('Sample fail', sampleFile, err); })
     )).then(() => {
       const loaded = Object.keys(audio.buffers).length;
       if (loaded >= 7) {
@@ -200,7 +177,7 @@
         setStatus('Samples nicht erreichbar — nutze Synth-Fallback.', 'error');
       }
       audio.loading = false;
-    }).catch(err => {
+    }).catch(() => {
       buildSynthBuffers();
       setStatus('Samples nicht erreichbar — nutze Synth-Fallback.', 'error');
       audio.loading = false;
@@ -302,10 +279,19 @@
     const src = audio.ctx.createBufferSource();
     src.buffer = audio.buffers[id];
     const g = audio.ctx.createGain();
-    let vol = gain || 1.0;
-    if (id === 'ph') vol *= 0.6;
-    g.gain.value = vol;
-    src.connect(g).connect(audio.ctx.destination);
+    const drumGain = DRUM_GAIN[id] || 1.0;
+    g.gain.value = (gain || 1.0) * drumGain;
+
+    // Pedal-HH: zusätzlicher Lowpass-Filter, damit's dumpfer klingt als Closed
+    if (id === 'ph') {
+      const filter = audio.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 2500;
+      filter.Q.value = 0.7;
+      src.connect(filter).connect(g).connect(audio.masterGain);
+    } else {
+      src.connect(g).connect(audio.masterGain);
+    }
     src.start(when || audio.ctx.currentTime);
   }
 
@@ -318,14 +304,10 @@
     warningBox: document.getElementById('warningBox'),
     playBtn: document.getElementById('playBtn'),
     clearBtn: document.getElementById('clearBtn'),
-    presetSel: document.getElementById('presetSel'),
     bpm: document.getElementById('bpm'),
     bpmOut: document.getElementById('bpmOut'),
     copyBarBtn: document.getElementById('copyBarBtn'),
-    copyDialog: document.getElementById('copyDialog'),
-    copyFromLabel: document.getElementById('copyFromLabel'),
-    copyTargets: document.getElementById('copyTargets'),
-    copyCancelBtn: document.getElementById('copyCancelBtn'),
+    pasteBarBtn: document.getElementById('pasteBarBtn'),
     chainMode: document.getElementById('chainMode'),
     exportPdfBtn: document.getElementById('exportPdfBtn'),
     notationPreview: document.getElementById('notationPreview')
@@ -524,39 +506,32 @@
     renderPreviewNotation();
   }
 
+  // ==== Takt kopieren/einfügen (simples Clipboard) ====
   el.copyBarBtn.addEventListener('click', () => {
-    el.copyFromLabel.textContent = String(state.currentBar + 1);
-    el.copyTargets.innerHTML = '';
-    if (currentBars() === 1) {
-      const hint = document.createElement('span');
-      hint.style.fontSize = '12px';
-      hint.style.color = 'var(--text-faint)';
-      hint.textContent = 'Erst Pattern-Länge auf 2 oder mehr Takte setzen.';
-      el.copyTargets.appendChild(hint);
-    } else {
-      for (let b = 0; b < currentBars(); b++) {
-        if (b === state.currentBar) continue;
-        const targetBar = b;
-        const btn = makeTab('Takt ' + (targetBar + 1), false, null, () => {
-          const d = currentData();
-          const srcOff = state.currentBar * STEPS_PER_BAR;
-          const dstOff = targetBar * STEPS_PER_BAR;
-          Object.keys(d).forEach(k => {
-            for (let i = 0; i < STEPS_PER_BAR; i++) d[k][dstOff + i] = d[k][srcOff + i];
-          });
-          setStatus(`Takt ${state.currentBar + 1} in Takt ${targetBar + 1} eingefügt.`, 'success');
-          el.copyDialog.hidden = true;
-          rebuildTabs();
-          refreshWarnings();
-          renderPreviewNotation();
-        });
-        el.copyTargets.appendChild(btn);
-      }
-    }
-    el.copyDialog.hidden = false;
+    const d = currentData();
+    const off = state.currentBar * STEPS_PER_BAR;
+    const clip = {};
+    Object.keys(d).forEach(k => {
+      clip[k] = d[k].slice(off, off + STEPS_PER_BAR);
+    });
+    state.barClipboard = clip;
+    el.pasteBarBtn.disabled = false;
+    setStatus(`Takt ${state.currentBar + 1} von Pattern ${state.currentSlot} in Zwischenablage kopiert.`, 'success');
   });
 
-  el.copyCancelBtn.addEventListener('click', () => { el.copyDialog.hidden = true; });
+  el.pasteBarBtn.addEventListener('click', () => {
+    if (!state.barClipboard) return;
+    const d = currentData();
+    const off = state.currentBar * STEPS_PER_BAR;
+    Object.keys(state.barClipboard).forEach(k => {
+      for (let i = 0; i < STEPS_PER_BAR; i++) d[k][off + i] = state.barClipboard[k][i];
+    });
+    setStatus(`Zwischenablage eingefügt in Takt ${state.currentBar + 1} von Pattern ${state.currentSlot}.`, 'success');
+    refreshGrid();
+    rebuildTabs();
+    refreshWarnings();
+    renderPreviewNotation();
+  });
 
   el.clearBtn.addEventListener('click', () => {
     const d = currentData();
@@ -568,24 +543,6 @@
     rebuildTabs();
     refreshWarnings();
     renderPreviewNotation();
-  });
-
-  el.presetSel.addEventListener('change', e => {
-    const name = e.target.value;
-    if (!PRESETS[name]) { e.target.value = ''; return; }
-    const d = currentData();
-    const off = state.currentBar * STEPS_PER_BAR;
-    Object.keys(d).forEach(k => {
-      for (let i = 0; i < STEPS_PER_BAR; i++) d[k][off + i] = 0;
-    });
-    Object.keys(PRESETS[name]).forEach(k => {
-      for (let j = 0; j < STEPS_PER_BAR; j++) d[k][off + j] = PRESETS[name][k][j];
-    });
-    refreshGrid();
-    rebuildTabs();
-    refreshWarnings();
-    renderPreviewNotation();
-    e.target.value = '';
   });
 
   el.bpm.addEventListener('input', e => { el.bpmOut.textContent = e.target.value; });
@@ -651,7 +608,7 @@
   }
   el.playBtn.addEventListener('click', togglePlay);
 
-  // Notation mit VexFlow
+  // ==== VexFlow Notation ====
   const VF_MAP = {
     cr: { key: 'a/5',  notehead: 'x', voice: 'up' },
     ri: { key: 'f/5',  notehead: 'x', voice: 'up' },
@@ -814,13 +771,28 @@
     });
   }
 
+  // ==== PDF-Export ====
+  function getJsPDF() {
+    // jsPDF kann unter verschiedenen globalen Namen liegen
+    if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    if (window.jsPDF) return window.jsPDF;
+    return null;
+  }
+  function getSvg2Pdf() {
+    if (window.svg2pdf && window.svg2pdf.svg2pdf) return window.svg2pdf.svg2pdf;
+    if (window.svg2pdf) return window.svg2pdf;
+    return null;
+  }
+
   async function exportPDF() {
     if (typeof Vex === 'undefined') {
       setStatus('Notations-Library noch nicht geladen, bitte kurz warten.', 'error');
       return;
     }
-    if (!window.jspdf || !window.svg2pdf) {
-      setStatus('PDF-Library fehlt.', 'error');
+    const jsPDFCtor = getJsPDF();
+    const svg2pdfFn = getSvg2Pdf();
+    if (!jsPDFCtor || !svg2pdfFn) {
+      setStatus('PDF-Libraries noch nicht geladen. Bitte Seite neu laden oder kurz warten.', 'error');
       return;
     }
     setStatus('Erstelle Notenblatt…');
@@ -831,8 +803,7 @@
       return;
     }
 
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pdf = new jsPDFCtor({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageW = 210;
     const pageH = 297;
     const margin = 15;
@@ -871,11 +842,7 @@
       tempDiv.style.top = '0';
       document.body.appendChild(tempDiv);
 
-      const barWidthPx = 260;
-      renderPatternVex(tempDiv, pattern, {
-        barWidth: barWidthPx,
-        height: 160
-      });
+      renderPatternVex(tempDiv, pattern, { barWidth: 260, height: 160 });
 
       const svg = tempDiv.querySelector('svg');
       if (svg) {
@@ -897,12 +864,7 @@
         }
 
         try {
-          await window.svg2pdf.svg2pdf(svg, pdf, {
-            x: margin,
-            y: yPos,
-            width: pdfW,
-            height: pdfH
-          });
+          await svg2pdfFn(svg, pdf, { x: margin, y: yPos, width: pdfW, height: pdfH });
         } catch(err) {
           console.error('svg2pdf fail', err);
         }
