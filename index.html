@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drum Sequencer</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.3/build/cjs/vexflow.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.3/svg2pdf.umd.min.js"></script>
+</head>
+<body>
+  <main class="app">
+    <header class="app-header">
+      <h1>Drum Sequencer</h1>
+      <p class="subtitle">Experimentier mit dem Sequencer, dann erstell dir dein Notenblatt zum Mitspielen.</p>
+    </header>
+
+    <section class="transport-row">
+      <button id="playBtn" type="button" class="btn-primary">Play</button>
+      <button id="clearBtn" type="button">Takt leeren</button>
+      <select id="presetSel">
+        <option value="">Preset laden…</option>
+        <option value="rock">Basic Rock</option>
+        <option value="funk">Funk Groove</option>
+        <option value="linear">Linear Funk</option>
+        <option value="shuffle">Shuffle</option>
+        <option value="four">Four on the Floor</option>
+        <option value="hiphop">Hip-Hop</option>
+        <option value="jazz">Jazz (Pedal-HiHat)</option>
+        <option value="tomroll">Tom Fill</option>
+      </select>
+      <div class="bpm-control">
+        <label for="bpm">BPM</label>
+        <input type="range" id="bpm" min="60" max="200" value="100" step="1">
+        <span id="bpmOut">100</span>
+      </div>
+      <button id="exportPdfBtn" type="button" class="btn-accent">📄 Notenblatt als PDF</button>
+    </section>
+
+    <section class="pattern-row">
+      <div class="group">
+        <span class="group-label">Pattern</span>
+        <div id="patternTabs" class="tab-group"></div>
+      </div>
+      <div class="group">
+        <span class="group-label">Länge</span>
+        <div id="lengthTabs" class="tab-group"></div>
+      </div>
+      <div class="group">
+        <span class="group-label">Takt</span>
+        <div id="barTabs" class="tab-group"></div>
+      </div>
+      <button id="copyBarBtn" type="button" class="btn-small">Takt einfügen in…</button>
+      <label class="chain-toggle">
+        <input type="checkbox" id="chainMode"> Pattern-Kette A→B→C→D
+      </label>
+    </section>
+
+    <div id="loadStatus" class="status">Bereit. Klick auf die Zellen, um Schläge zu setzen.</div>
+    <div id="warningBox" class="warning" style="display:none;"></div>
+
+    <section id="gridView">
+      <div id="grid"></div>
+      <div id="beatLabels">
+        <div></div>
+        <div class="beat-label">1</div>
+        <div class="beat-label">2</div>
+        <div class="beat-label">3</div>
+        <div class="beat-label">4</div>
+      </div>
+    </section>
+
+    <section class="preview-section">
+      <h2 class="preview-title">Vorschau: aktuelles Pattern als Noten</h2>
+      <div id="notationPreview" class="notation-preview"></div>
+    </section>
+
+    <div id="copyDialog" class="dialog" hidden>
+      <div class="dialog-body">
+        <p>Takt <strong id="copyFromLabel">1</strong> einfügen in:</p>
+        <div id="copyTargets" class="tab-group"></div>
+        <div class="dialog-actions">
+          <button id="copyCancelBtn" type="button" class="btn-small">Abbrechen</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="app-footer">
+      <p>
+        Regeln für echte Drummer: Die drei Hi-Hat-Varianten (Closed, Open, Pedal) schließen sich gegenseitig aus.
+        Maximal zwei Toms pro Step. Seltene Kombinationen werden als Hinweis markiert.
+      </p>
+    </footer>
+  </main>
+
+  <script src="sequencer.js"></script>
+</body>
+</html>
