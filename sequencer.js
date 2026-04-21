@@ -1,7 +1,7 @@
 /**
  * toenchen Trackofaktor
  * Drum Sequencer mit Notenblatt-Export
- * Keine Regeln — der Drummer entscheidet selbst, was machbar ist.
+ * Keine Regeln — der Drummer entscheidet selbst.
  */
 
 (function () {
@@ -32,7 +32,35 @@
     ri: 0.80, cr: 1.00
   };
 
-  // Keine Mutex-Regeln mehr. Alles ist erlaubt.
+  // Hilfsfunktion: erstellt 16-Step-Array mit 1en an den angegebenen Positionen
+  // Positionen sind 1-basiert (wie auf dem Grid sichtbar): 1..16
+  function steps(...positions) {
+    const arr = new Array(STEPS_PER_BAR).fill(0);
+    positions.forEach(p => { if (p >= 1 && p <= 16) arr[p - 1] = 1; });
+    return arr;
+  }
+  function concatRow(...arrays) {
+    return [].concat(...arrays);
+  }
+
+  // Default-Pattern A: zwei Takte, wie auf dem Screenshot
+  const DEFAULT_PATTERN_A = {
+    bars: 2,
+    data: {
+      cr: concatRow(steps(), steps()),
+      ri: concatRow(steps(1), steps()),
+      oh: concatRow(steps(4), steps(4)),
+      hh: concatRow(steps(3, 5), steps(3, 5)),
+      ph: concatRow(steps(1, 9, 13), steps(1, 9, 13)),
+      th: concatRow(steps(), steps()),
+      tm: concatRow(steps(7), steps(7)),
+      tl: concatRow(steps(3), steps(3)),
+      rs: concatRow(steps(9, 13, 16), steps(9, 13, 16)),
+      sn: concatRow(steps(7, 10, 14), steps(2, 5, 10, 14)),
+      kd: concatRow(steps(1, 11, 13), steps(1, 11, 15))
+    }
+  };
+
   function applyStep(data, trackId, globalStep, value) {
     data[trackId][globalStep] = value;
     return [];
@@ -57,9 +85,22 @@
     barClipboard: null
   };
 
+  // Pattern A mit Default füllen, Rest leer
   SLOTS.forEach(slot => {
     state.patterns[slot] = { bars: 1, data: emptyPattern(1) };
   });
+  state.patterns.A = {
+    bars: DEFAULT_PATTERN_A.bars,
+    data: (() => {
+      const d = {};
+      TRACKS.forEach(t => {
+        d[t.id] = DEFAULT_PATTERN_A.data[t.id]
+          ? DEFAULT_PATTERN_A.data[t.id].slice()
+          : emptyRow(DEFAULT_PATTERN_A.bars * STEPS_PER_BAR);
+      });
+      return d;
+    })()
+  };
 
   const currentSlot = () => state.patterns[state.currentSlot];
   const currentData = () => currentSlot().data;
