@@ -6,8 +6,8 @@
   <title>Drum Sequencer</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.3/build/cjs/vexflow.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.3/svg2pdf.umd.min.js"></script>
+  <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://unpkg.com/svg2pdf.js@2.2.3/dist/svg2pdf.umd.min.js"></script>
 </head>
 <body>
   <main class="app">
@@ -19,17 +19,6 @@
     <section class="transport-row">
       <button id="playBtn" type="button" class="btn-primary">Play</button>
       <button id="clearBtn" type="button">Takt leeren</button>
-      <select id="presetSel">
-        <option value="">Preset laden…</option>
-        <option value="rock">Basic Rock</option>
-        <option value="funk">Funk Groove</option>
-        <option value="linear">Linear Funk</option>
-        <option value="shuffle">Shuffle</option>
-        <option value="four">Four on the Floor</option>
-        <option value="hiphop">Hip-Hop</option>
-        <option value="jazz">Jazz (Pedal-HiHat)</option>
-        <option value="tomroll">Tom Fill</option>
-      </select>
       <div class="bpm-control">
         <label for="bpm">BPM</label>
         <input type="range" id="bpm" min="60" max="200" value="100" step="1">
@@ -51,7 +40,8 @@
         <span class="group-label">Takt</span>
         <div id="barTabs" class="tab-group"></div>
       </div>
-      <button id="copyBarBtn" type="button" class="btn-small">Takt einfügen in…</button>
+      <button id="copyBarBtn" type="button" class="btn-small">Takt kopieren</button>
+      <button id="pasteBarBtn" type="button" class="btn-small" disabled>Takt einfügen</button>
       <label class="chain-toggle">
         <input type="checkbox" id="chainMode"> Pattern-Kette A→B→C→D
       </label>
@@ -75,16 +65,6 @@
       <h2 class="preview-title">Vorschau: aktuelles Pattern als Noten</h2>
       <div id="notationPreview" class="notation-preview"></div>
     </section>
-
-    <div id="copyDialog" class="dialog" hidden>
-      <div class="dialog-body">
-        <p>Takt <strong id="copyFromLabel">1</strong> einfügen in:</p>
-        <div id="copyTargets" class="tab-group"></div>
-        <div class="dialog-actions">
-          <button id="copyCancelBtn" type="button" class="btn-small">Abbrechen</button>
-        </div>
-      </div>
-    </div>
 
     <footer class="app-footer">
       <p>
