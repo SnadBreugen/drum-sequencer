@@ -39,25 +39,23 @@
     positions.forEach(p => { if (p >= 1 && p <= 16) arr[p - 1] = 1; });
     return arr;
   }
-  function concatRow(...arrays) {
-    return [].concat(...arrays);
-  }
 
-  // Default-Pattern A: zwei Takte, wie auf dem Screenshot
+  // Default-Pattern A: einfacher Rock-Beat, 1 Takt
+  // Achtel-HiHat (nicht 16tel!), Kick 1+3, Snare 2+4
   const DEFAULT_PATTERN_A = {
-    bars: 2,
+    bars: 1,
     data: {
-      cr: concatRow(steps(), steps()),
-      ri: concatRow(steps(1), steps()),
-      oh: concatRow(steps(4), steps(4)),
-      hh: concatRow(steps(3, 5), steps(3, 5)),
-      ph: concatRow(steps(1, 9, 13), steps(1, 9, 13)),
-      th: concatRow(steps(), steps()),
-      tm: concatRow(steps(7), steps(7)),
-      tl: concatRow(steps(3), steps(3)),
-      rs: concatRow(steps(9, 13, 16), steps(9, 13, 16)),
-      sn: concatRow(steps(7, 10, 14), steps(2, 5, 10, 14)),
-      kd: concatRow(steps(1, 11, 13), steps(1, 11, 15))
+      cr: steps(),
+      ri: steps(),
+      oh: steps(),
+      hh: steps(1, 3, 5, 7, 9, 11, 13, 15),
+      ph: steps(),
+      th: steps(),
+      tm: steps(),
+      tl: steps(),
+      rs: steps(),
+      sn: steps(5, 13),
+      kd: steps(1, 9)
     }
   };
 
@@ -85,7 +83,6 @@
     barClipboard: null
   };
 
-  // Pattern A mit Default füllen, Rest leer
   SLOTS.forEach(slot => {
     state.patterns[slot] = { bars: 1, data: emptyPattern(1) };
   });
