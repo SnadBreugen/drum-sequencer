@@ -1,10 +1,6 @@
 /**
+ * toenchen Trackofaktor
  * Drum Sequencer mit Notenblatt-Export
- * - 10 Drum-Stimmen, 4 Pattern-Slots, 1-4 Takte pro Pattern
- * - Echte akustische Drum-Samples (Oramics Pearl Master Studio)
- * - Drummer-Regeln: Hi-Hat-Mutex, max 2 Toms gleichzeitig
- * - Einfaches Takt-Copy/Paste
- * - Notenblatt-Export als PDF über VexFlow
  */
 
 (function () {
@@ -27,13 +23,12 @@
     { id: 'kd', label: 'Kick',       group: 'drum',   sample: 'kick-01.wav' }
   ];
 
-  // Pro-Drum-Lautstärke (Multiplier)
   const DRUM_GAIN = {
     kd: 1.15,
     sn: 1.05,
     hh: 0.80,
     oh: 0.90,
-    ph: 0.30,  // deutlich leiser als closed, auch akustisch realistisch
+    ph: 0.30,
     th: 1.00,
     tm: 1.00,
     tl: 1.00,
@@ -109,7 +104,7 @@
     currentStep: -1,
     chainMode: false,
     chainPlayingSlot: 'A',
-    barClipboard: null  // kopierter Takt: {kd: [16], sn: [16], ...}
+    barClipboard: null
   };
 
   SLOTS.forEach(slot => {
@@ -125,7 +120,6 @@
     ctx: null,
     masterGain: null,
     buffers: {},
-    hihatFilters: {}, // für Pedal-HH: eigener Lowpass
     usingSamples: false,
     loading: false,
     loadPromise: null
@@ -282,13 +276,24 @@
     const drumGain = DRUM_GAIN[id] || 1.0;
     g.gain.value = (gain || 1.0) * drumGain;
 
-    // Pedal-HH: zusätzlicher Lowpass-Filter, damit's dumpfer klingt als Closed
-    if (id === 'ph') {
-      const filter = audio.ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 2500;
-      filter.Q.value = 0.7;
-      src.connect(filter).connect(g).connect(audio.masterGain);
+    // Hi-Hats: Hochpass bei 380 Hz entfernt das tiefe Rumpeln im Sample
+    if (id === 'hh' || id === 'oh' || id === 'ph') {
+      const highpass = audio.ctx.createBiquadFilter();
+      highpass.type = 'highpass';
+      highpass.frequency.value = 380;
+      highpass.Q.value = 0.7;
+
+      if (id === 'ph') {
+        // Pedal-HH: zusätzlich Lowpass bei 4500 Hz für dumpferen Fuß-Charakter
+        // (aber nicht zu dumpf — muss noch Biss haben)
+        const lowpass = audio.ctx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.value = 4500;
+        lowpass.Q.value = 0.7;
+        src.connect(highpass).connect(lowpass).connect(g).connect(audio.masterGain);
+      } else {
+        src.connect(highpass).connect(g).connect(audio.masterGain);
+      }
     } else {
       src.connect(g).connect(audio.masterGain);
     }
@@ -506,7 +511,6 @@
     renderPreviewNotation();
   }
 
-  // ==== Takt kopieren/einfügen (simples Clipboard) ====
   el.copyBarBtn.addEventListener('click', () => {
     const d = currentData();
     const off = state.currentBar * STEPS_PER_BAR;
@@ -608,7 +612,7 @@
   }
   el.playBtn.addEventListener('click', togglePlay);
 
-  // ==== VexFlow Notation ====
+  // VexFlow Notation
   const VF_MAP = {
     cr: { key: 'a/5',  notehead: 'x', voice: 'up' },
     ri: { key: 'f/5',  notehead: 'x', voice: 'up' },
@@ -771,9 +775,7 @@
     });
   }
 
-  // ==== PDF-Export ====
   function getJsPDF() {
-    // jsPDF kann unter verschiedenen globalen Namen liegen
     if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
     if (window.jsPDF) return window.jsPDF;
     return null;
@@ -810,18 +812,18 @@
 
     pdf.setFontSize(18);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('Drum Sequencer — Notenblatt', margin, margin + 6);
-    pdf.setFontSize(10);
+    pdf.text('toenchen Trackofaktor', margin, margin + 6);
+    pdf.setFontSize(9);
     pdf.setFont('helvetica', 'normal');
     pdf.setTextColor(100);
     const date = new Date().toLocaleDateString('de-DE');
     const bpmVal = el.bpm.value;
-    pdf.text(`Erstellt: ${date}   ·   BPM: ${bpmVal}`, margin, margin + 12);
+    pdf.text(`Notenblatt · ${date} · ${bpmVal} BPM`, margin, margin + 12);
     pdf.setTextColor(0);
 
     pdf.setFontSize(9);
     pdf.setFont('helvetica', 'italic');
-    pdf.text('Notenschlüssel: Perkussion (4/4). x-Köpfe = Becken/HiHat, ovale Köpfe = Trommeln.', margin, margin + 18);
+    pdf.text('Perkussions-Schlüssel, 4/4. x-Köpfe = Becken/HiHat, ovale Köpfe = Trommeln.', margin, margin + 18);
     pdf.setFont('helvetica', 'normal');
 
     let yPos = margin + 26;
@@ -894,7 +896,13 @@
     ];
     legendLines.forEach(l => { pdf.text('• ' + l, margin, yPos); yPos += 4.5; });
 
-    pdf.save(`drum-sequencer-${date.replace(/\./g, '-')}.pdf`);
+    yPos += 4;
+    pdf.setFontSize(8);
+    pdf.setTextColor(150);
+    pdf.text('Mit Liebe gemacht im Boenchen Schmackofaktur.', margin, yPos);
+    pdf.setTextColor(0);
+
+    pdf.save(`trackofaktor-${date.replace(/\./g, '-')}.pdf`);
     setStatus('Notenblatt als PDF gespeichert.', 'success');
   }
 
