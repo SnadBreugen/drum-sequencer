@@ -19,32 +19,27 @@
     { id: 'th', label: 'Tom hi',     group: 'tom',    sample: 'tom-01.wav' },
     { id: 'tm', label: 'Tom mid',    group: 'tom',    sample: 'tom-02.wav' },
     { id: 'tl', label: 'Tom lo',     group: 'tom',    sample: 'tom-03.wav' },
+    { id: 'rs', label: 'Rimshot',    group: 'drum',   sample: 'snare-01.wav' },
     { id: 'sn', label: 'Snare',      group: 'drum',   sample: 'snare-01.wav' },
     { id: 'kd', label: 'Kick',       group: 'drum',   sample: 'kick-01.wav' }
   ];
 
   const DRUM_GAIN = {
-    kd: 1.15,
-    sn: 1.05,
-    hh: 0.80,
-    oh: 0.90,
-    ph: 0.30,
-    th: 1.00,
-    tm: 1.00,
-    tl: 1.00,
-    ri: 0.80,
-    cr: 1.00
+    kd: 1.15, sn: 1.05, rs: 1.25,
+    hh: 0.80, oh: 0.90, ph: 0.30,
+    th: 1.00, tm: 1.00, tl: 1.00,
+    ri: 0.80, cr: 1.00
   };
 
   const HIHAT_IDS = ['hh', 'oh', 'ph'];
   const TOM_IDS   = ['th', 'tm', 'tl'];
+  // Snare und Rimshot schließen sich aus — man schlägt ja nicht gleichzeitig Fell und Rand
+  const SNARE_MUTEX = ['sn', 'rs'];
 
   const WARNING_PAIRS = [
-    { ids: ['hh', 'ri'], msg: 'Hi-Hat + Ride auf Schlag %step%: selten, aber möglich.' },
-    { ids: ['oh', 'ri'], msg: 'Open HH + Ride auf Schlag %step%: selten, aber möglich.' },
-    { ids: ['cr', 'ri'], msg: 'Crash + Ride auf Schlag %step%: beide Hände am Becken.' },
-    { ids: ['hh', 'cr'], msg: 'Hi-Hat + Crash auf Schlag %step%: schneller Hand-Wechsel nötig.' },
-    { ids: ['oh', 'cr'], msg: 'Open HH + Crash auf Schlag %step%: schneller Hand-Wechsel nötig.' }
+    { ids: ['hh', 'ri'], msg: 'Closed HH + Ride auf Schlag %step%: beides Timekeeper, meist eins oder das andere.' },
+    { ids: ['oh', 'ri'], msg: 'Open HH + Ride auf Schlag %step%: beides Timekeeper, meist eins oder das andere.' },
+    { ids: ['cr', 'ri'], msg: 'Crash + Ride auf Schlag %step%: beide Becken gleichzeitig klingt oft matschig.' }
   ];
 
   function applyStep(data, trackId, globalStep, value) {
@@ -53,6 +48,14 @@
     const removed = [];
     if (HIHAT_IDS.includes(trackId)) {
       for (const other of HIHAT_IDS) {
+        if (other !== trackId && data[other][globalStep]) {
+          data[other][globalStep] = 0;
+          removed.push(other);
+        }
+      }
+    }
+    if (SNARE_MUTEX.includes(trackId)) {
+      for (const other of SNARE_MUTEX) {
         if (other !== trackId && data[other][globalStep]) {
           data[other][globalStep] = 0;
           removed.push(other);
@@ -117,12 +120,8 @@
   const globalStep  = (bar, sib) => bar * STEPS_PER_BAR + sib;
 
   const audio = {
-    ctx: null,
-    masterGain: null,
-    buffers: {},
-    usingSamples: false,
-    loading: false,
-    loadPromise: null
+    ctx: null, masterGain: null, buffers: {},
+    usingSamples: false, loading: false, loadPromise: null
   };
 
   function ensureCtx() {
@@ -165,7 +164,7 @@
       const loaded = Object.keys(audio.buffers).length;
       if (loaded >= 7) {
         audio.usingSamples = true;
-        setStatus(`Echtes Drum-Kit geladen (${loaded}/${TRACKS.length} Samples).`, 'success');
+        setStatus(`Drum-Kit geladen (${loaded}/${TRACKS.length} Samples).`, 'success');
       } else {
         buildSynthBuffers();
         setStatus('Samples nicht erreichbar — nutze Synth-Fallback.', 'error');
@@ -214,6 +213,7 @@
     });
     highpassInPlace(sn.getChannelData(0), 180, audio.ctx.sampleRate);
     audio.buffers.sn = sn;
+    audio.buffers.rs = sn;  // Rimshot nutzt dasselbe Sample, andere Filter im playSample
     const mkHat = (mode) => {
       let dur, decay, bright;
       if (mode==='closed') { dur=0.08; decay=35; bright=1; }
@@ -276,16 +276,29 @@
     const drumGain = DRUM_GAIN[id] || 1.0;
     g.gain.value = (gain || 1.0) * drumGain;
 
-    // Hi-Hats: Hochpass bei 380 Hz entfernt das tiefe Rumpeln im Sample
-    if (id === 'hh' || id === 'oh' || id === 'ph') {
+    // Rimshot: Snare-Sample mit Boost im Obertonbereich und leichter Verkürzung
+    // → klingt härter/knalliger als normale Snare
+    if (id === 'rs') {
+      const peak = audio.ctx.createBiquadFilter();
+      peak.type = 'peaking';
+      peak.frequency.value = 3200;
+      peak.Q.value = 2.0;
+      peak.gain.value = 8;  // dB Boost für den Attack-Crack
+      const highpass = audio.ctx.createBiquadFilter();
+      highpass.type = 'highpass';
+      highpass.frequency.value = 250;
+      highpass.Q.value = 0.7;
+      src.connect(peak).connect(highpass).connect(g).connect(audio.masterGain);
+    }
+    // Hi-Hats: Hochpass gegen tiefes Rumpeln im Sample
+    else if (id === 'hh' || id === 'oh' || id === 'ph') {
       const highpass = audio.ctx.createBiquadFilter();
       highpass.type = 'highpass';
       highpass.frequency.value = 380;
       highpass.Q.value = 0.7;
 
       if (id === 'ph') {
-        // Pedal-HH: zusätzlich Lowpass bei 4500 Hz für dumpferen Fuß-Charakter
-        // (aber nicht zu dumpf — muss noch Biss haben)
+        // Pedal-HH zusätzlich dumpfer
         const lowpass = audio.ctx.createBiquadFilter();
         lowpass.type = 'lowpass';
         lowpass.frequency.value = 4500;
@@ -328,7 +341,6 @@
     TRACKS.forEach(track => {
       const lbl = document.createElement('div');
       lbl.className = 'row-label';
-      if (track.group === 'hihat') lbl.classList.add('hihat-group');
       const preview = document.createElement('button');
       preview.type = 'button';
       preview.className = 'preview-btn';
@@ -528,6 +540,7 @@
     const d = currentData();
     const off = state.currentBar * STEPS_PER_BAR;
     Object.keys(state.barClipboard).forEach(k => {
+      if (!d[k]) return;  // falls Clipboard aus alter Version ohne Rimshot stammt
       for (let i = 0; i < STEPS_PER_BAR; i++) d[k][off + i] = state.barClipboard[k][i];
     });
     setStatus(`Zwischenablage eingefügt in Takt ${state.currentBar + 1} von Pattern ${state.currentSlot}.`, 'success');
@@ -613,6 +626,7 @@
   el.playBtn.addEventListener('click', togglePlay);
 
   // VexFlow Notation
+  // Rimshot: gleiche Position wie Snare (c/5), aber mit x-Notenkopf
   const VF_MAP = {
     cr: { key: 'a/5',  notehead: 'x', voice: 'up' },
     ri: { key: 'f/5',  notehead: 'x', voice: 'up' },
@@ -622,6 +636,7 @@
     th: { key: 'e/5',  notehead: 'n', voice: 'up' },
     tm: { key: 'd/5',  notehead: 'n', voice: 'up' },
     tl: { key: 'a/4',  notehead: 'n', voice: 'down' },
+    rs: { key: 'c/5',  notehead: 'x', voice: 'up' },
     sn: { key: 'c/5',  notehead: 'n', voice: 'up' },
     kd: { key: 'f/4',  notehead: 'n', voice: 'down' }
   };
@@ -669,7 +684,7 @@
     const leftPad = 60;
     const rightPad = 20;
     const width = leftPad + bars * barWidth + rightPad;
-    const height = opts.height || 180;
+    const height = opts.height || 200;
 
     const div = document.createElement('div');
     container.appendChild(div);
@@ -679,10 +694,13 @@
     const ctx = renderer.getContext();
     ctx.setFont('Arial', 10);
 
+    // Oben: Pattern-Label (wenn vorhanden) — mit genug Abstand darunter
+    const staveTop = opts.label ? 50 : 30;
+
     for (let barIdx = 0; barIdx < bars; barIdx++) {
       const x = (barIdx === 0) ? 10 : leftPad + barIdx * barWidth - 10;
       const w = (barIdx === 0) ? leftPad + barWidth - 20 : barWidth;
-      const stave = new VF.Stave(x, 30, w);
+      const stave = new VF.Stave(x, staveTop, w);
       if (barIdx === 0) {
         stave.addClef('percussion').addTimeSignature('4/4');
       }
@@ -691,9 +709,11 @@
       }
       stave.setContext(ctx).draw();
 
+      // Takt-Label unter dem jeweiligen Takt (nicht über dem ersten Takt,
+      // damit er sich nicht mit dem Pattern-Label überlappt)
       ctx.save();
       ctx.setFont('Arial', 9);
-      ctx.fillText('Takt ' + (barIdx + 1), x + 4, 24);
+      ctx.fillText('Takt ' + (barIdx + 1), x + 4, staveTop - 4);
       ctx.restore();
 
       const barOffset = barIdx * STEPS_PER_BAR;
@@ -758,6 +778,7 @@
       lowerBeams.forEach(b => b.setContext(ctx).draw());
     }
 
+    // Pattern-Überschrift oben, weit genug entfernt vom Stave
     if (opts.label) {
       ctx.save();
       ctx.setFont('Arial', 12, 'bold');
@@ -771,7 +792,7 @@
     renderPatternVex(el.notationPreview, state.patterns[state.currentSlot], {
       label: `Pattern ${state.currentSlot} · ${state.patterns[state.currentSlot].bars} ${state.patterns[state.currentSlot].bars === 1 ? 'Takt' : 'Takte'}`,
       barWidth: 240,
-      height: 170
+      height: 190
     });
   }
 
@@ -823,7 +844,7 @@
 
     pdf.setFontSize(9);
     pdf.setFont('helvetica', 'italic');
-    pdf.text('Perkussions-Schlüssel, 4/4. x-Köpfe = Becken/HiHat, ovale Köpfe = Trommeln.', margin, margin + 18);
+    pdf.text('Perkussions-Schlüssel, 4/4. x-Köpfe = Becken/HiHat/Rimshot, ovale Köpfe = Trommeln.', margin, margin + 18);
     pdf.setFont('helvetica', 'normal');
 
     let yPos = margin + 26;
@@ -844,7 +865,7 @@
       tempDiv.style.top = '0';
       document.body.appendChild(tempDiv);
 
-      renderPatternVex(tempDiv, pattern, { barWidth: 260, height: 160 });
+      renderPatternVex(tempDiv, pattern, { barWidth: 260, height: 170 });
 
       const svg = tempDiv.querySelector('svg');
       if (svg) {
@@ -890,17 +911,12 @@
       'Crash / Ride / Hi-Hat: x-Notenkopf über dem System',
       'Open Hi-Hat: x-Notenkopf mit "+"-Artikulation',
       'Pedal Hi-Hat: x-Notenkopf unter dem System',
+      'Rimshot: x-Notenkopf auf der Snare-Linie',
       'Toms: ovale Notenköpfe, hoch nach oben sortiert',
       'Snare: ovaler Notenkopf im mittleren Zwischenraum',
       'Kick: ovaler Notenkopf unter dem System, Hals nach unten'
     ];
     legendLines.forEach(l => { pdf.text('• ' + l, margin, yPos); yPos += 4.5; });
-
-    yPos += 4;
-    pdf.setFontSize(8);
-    pdf.setTextColor(150);
-    pdf.text('Mit Liebe gemacht im Boenchen Schmackofaktur.', margin, yPos);
-    pdf.setTextColor(0);
 
     pdf.save(`trackofaktor-${date.replace(/\./g, '-')}.pdf`);
     setStatus('Notenblatt als PDF gespeichert.', 'success');
