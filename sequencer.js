@@ -10,22 +10,23 @@
   const SLOTS = ['A', 'B', 'C', 'D'];
   const SAMPLE_BASE = 'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/';
 
+  // TRACKS: einige kommen von Oramics (remote), rimshot ist lokal (eigenes Sample)
   const TRACKS = [
-    { id: 'cr', label: 'Crash',      group: 'cymbal', sample: 'crash-01.wav' },
-    { id: 'ri', label: 'Ride',       group: 'cymbal', sample: 'ride-01.wav' },
-    { id: 'oh', label: 'Open HH',    group: 'hihat',  sample: 'hihat-open.wav' },
-    { id: 'hh', label: 'Closed HH',  group: 'hihat',  sample: 'hihat-closed.wav' },
-    { id: 'ph', label: 'Pedal HH',   group: 'hihat',  sample: 'hihat-closed.wav' },
-    { id: 'th', label: 'Tom hi',     group: 'tom',    sample: 'tom-01.wav' },
-    { id: 'tm', label: 'Tom mid',    group: 'tom',    sample: 'tom-02.wav' },
-    { id: 'tl', label: 'Tom lo',     group: 'tom',    sample: 'tom-03.wav' },
-    { id: 'rs', label: 'Rimshot',    group: 'drum',   sample: 'snare-01.wav' },
-    { id: 'sn', label: 'Snare',      group: 'drum',   sample: 'snare-01.wav' },
-    { id: 'kd', label: 'Kick',       group: 'drum',   sample: 'kick-01.wav' }
+    { id: 'cr', label: 'Crash',      group: 'cymbal', sample: 'crash-01.wav', source: 'remote' },
+    { id: 'ri', label: 'Ride',       group: 'cymbal', sample: 'ride-01.wav',  source: 'remote' },
+    { id: 'oh', label: 'Open HH',    group: 'hihat',  sample: 'hihat-open.wav',   source: 'remote' },
+    { id: 'hh', label: 'Closed HH',  group: 'hihat',  sample: 'hihat-closed.wav', source: 'remote' },
+    { id: 'ph', label: 'Pedal HH',   group: 'hihat',  sample: 'hihat-closed.wav', source: 'remote' },
+    { id: 'th', label: 'Tom hi',     group: 'tom',    sample: 'tom-01.wav', source: 'remote' },
+    { id: 'tm', label: 'Tom mid',    group: 'tom',    sample: 'tom-02.wav', source: 'remote' },
+    { id: 'tl', label: 'Tom lo',     group: 'tom',    sample: 'tom-03.wav', source: 'remote' },
+    { id: 'rs', label: 'Rimshot',    group: 'drum',   sample: 'rimshot.wav', source: 'local' },
+    { id: 'sn', label: 'Snare',      group: 'drum',   sample: 'snare-01.wav', source: 'remote' },
+    { id: 'kd', label: 'Kick',       group: 'drum',   sample: 'kick-01.wav',  source: 'remote' }
   ];
 
   const DRUM_GAIN = {
-    kd: 1.15, sn: 1.05, rs: 1.25,
+    kd: 1.15, sn: 1.05, rs: 1.00,
     hh: 0.80, oh: 0.90, ph: 0.30,
     th: 1.00, tm: 1.00, tl: 1.00,
     ri: 0.80, cr: 1.00
@@ -33,8 +34,7 @@
 
   const HIHAT_IDS = ['hh', 'oh', 'ph'];
   const TOM_IDS   = ['th', 'tm', 'tl'];
-  // Snare und Rimshot schließen sich aus — man schlägt ja nicht gleichzeitig Fell und Rand
-  const SNARE_MUTEX = ['sn', 'rs'];
+  const SNARE_MUTEX = ['sn', 'rs'];  // Snare und Rimshot schließen sich aus
 
   const WARNING_PAIRS = [
     { ids: ['hh', 'ri'], msg: 'Closed HH + Ride auf Schlag %step%: beides Timekeeper, meist eins oder das andere.' },
@@ -142,24 +142,31 @@
       .then(buf => new Promise((res, rej) => audio.ctx.decodeAudioData(buf, res, rej)));
   }
 
+  function sampleUrl(track) {
+    if (track.source === 'local') return track.sample;
+    return SAMPLE_BASE + track.sample;
+  }
+
   function loadAllSamples() {
     if (audio.loadPromise) return audio.loadPromise;
     ensureCtx();
     audio.loading = true;
-    setStatus('Lade akustische Drum-Samples…');
+    setStatus('Lade Drum-Samples…');
 
-    const uniqueSamples = {};
+    // Gruppiere nach URL (unterschiedliche Tracks können dasselbe Sample nutzen)
+    const uniqueUrls = {};
     TRACKS.forEach(t => {
-      if (!uniqueSamples[t.sample]) uniqueSamples[t.sample] = [];
-      uniqueSamples[t.sample].push(t.id);
+      const url = sampleUrl(t);
+      if (!uniqueUrls[url]) uniqueUrls[url] = [];
+      uniqueUrls[url].push(t.id);
     });
 
-    audio.loadPromise = Promise.all(Object.keys(uniqueSamples).map(sampleFile =>
-      loadSampleBuffer(SAMPLE_BASE + sampleFile)
+    audio.loadPromise = Promise.all(Object.keys(uniqueUrls).map(url =>
+      loadSampleBuffer(url)
         .then(buf => {
-          uniqueSamples[sampleFile].forEach(id => { audio.buffers[id] = buf; });
+          uniqueUrls[url].forEach(id => { audio.buffers[id] = buf; });
         })
-        .catch(err => { console.warn('Sample fail', sampleFile, err); })
+        .catch(err => { console.warn('Sample fail', url, err); })
     )).then(() => {
       const loaded = Object.keys(audio.buffers).length;
       if (loaded >= 7) {
@@ -213,7 +220,7 @@
     });
     highpassInPlace(sn.getChannelData(0), 180, audio.ctx.sampleRate);
     audio.buffers.sn = sn;
-    audio.buffers.rs = sn;  // Rimshot nutzt dasselbe Sample, andere Filter im playSample
+    audio.buffers.rs = sn;
     const mkHat = (mode) => {
       let dur, decay, bright;
       if (mode==='closed') { dur=0.08; decay=35; bright=1; }
@@ -276,29 +283,14 @@
     const drumGain = DRUM_GAIN[id] || 1.0;
     g.gain.value = (gain || 1.0) * drumGain;
 
-    // Rimshot: Snare-Sample mit Boost im Obertonbereich und leichter Verkürzung
-    // → klingt härter/knalliger als normale Snare
-    if (id === 'rs') {
-      const peak = audio.ctx.createBiquadFilter();
-      peak.type = 'peaking';
-      peak.frequency.value = 3200;
-      peak.Q.value = 2.0;
-      peak.gain.value = 8;  // dB Boost für den Attack-Crack
-      const highpass = audio.ctx.createBiquadFilter();
-      highpass.type = 'highpass';
-      highpass.frequency.value = 250;
-      highpass.Q.value = 0.7;
-      src.connect(peak).connect(highpass).connect(g).connect(audio.masterGain);
-    }
-    // Hi-Hats: Hochpass gegen tiefes Rumpeln im Sample
-    else if (id === 'hh' || id === 'oh' || id === 'ph') {
+    // Hi-Hats: Hochpass gegen tiefes Rumpeln
+    if (id === 'hh' || id === 'oh' || id === 'ph') {
       const highpass = audio.ctx.createBiquadFilter();
       highpass.type = 'highpass';
       highpass.frequency.value = 380;
       highpass.Q.value = 0.7;
 
       if (id === 'ph') {
-        // Pedal-HH zusätzlich dumpfer
         const lowpass = audio.ctx.createBiquadFilter();
         lowpass.type = 'lowpass';
         lowpass.frequency.value = 4500;
@@ -540,7 +532,7 @@
     const d = currentData();
     const off = state.currentBar * STEPS_PER_BAR;
     Object.keys(state.barClipboard).forEach(k => {
-      if (!d[k]) return;  // falls Clipboard aus alter Version ohne Rimshot stammt
+      if (!d[k]) return;
       for (let i = 0; i < STEPS_PER_BAR; i++) d[k][off + i] = state.barClipboard[k][i];
     });
     setStatus(`Zwischenablage eingefügt in Takt ${state.currentBar + 1} von Pattern ${state.currentSlot}.`, 'success');
@@ -626,7 +618,6 @@
   el.playBtn.addEventListener('click', togglePlay);
 
   // VexFlow Notation
-  // Rimshot: gleiche Position wie Snare (c/5), aber mit x-Notenkopf
   const VF_MAP = {
     cr: { key: 'a/5',  notehead: 'x', voice: 'up' },
     ri: { key: 'f/5',  notehead: 'x', voice: 'up' },
@@ -694,7 +685,6 @@
     const ctx = renderer.getContext();
     ctx.setFont('Arial', 10);
 
-    // Oben: Pattern-Label (wenn vorhanden) — mit genug Abstand darunter
     const staveTop = opts.label ? 50 : 30;
 
     for (let barIdx = 0; barIdx < bars; barIdx++) {
@@ -709,8 +699,6 @@
       }
       stave.setContext(ctx).draw();
 
-      // Takt-Label unter dem jeweiligen Takt (nicht über dem ersten Takt,
-      // damit er sich nicht mit dem Pattern-Label überlappt)
       ctx.save();
       ctx.setFont('Arial', 9);
       ctx.fillText('Takt ' + (barIdx + 1), x + 4, staveTop - 4);
@@ -778,7 +766,6 @@
       lowerBeams.forEach(b => b.setContext(ctx).draw());
     }
 
-    // Pattern-Überschrift oben, weit genug entfernt vom Stave
     if (opts.label) {
       ctx.save();
       ctx.setFont('Arial', 12, 'bold');
