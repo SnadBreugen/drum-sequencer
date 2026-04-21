@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>toenchen Trackofaktor</title>
   <link rel="stylesheet" href="style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.3/build/cjs/vexflow.js"></script>
   <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://unpkg.com/svg2pdf.js@2.2.3/dist/svg2pdf.umd.min.js"></script>
@@ -14,8 +13,12 @@
   <main class="app">
     <header class="app-header">
       <h1 class="brand">toenchen Trackofaktor</h1>
-      <p class="subtitle">Aus dem Kopf aufs Papier — Grooves bauen und als Notenblatt mitnehmen.</p>
+      <p class="subtitle">Grooves bauen, als Notenblatt mitnehmen.</p>
     </header>
+
+    <div class="rotate-hint">
+      Für bessere Bedienung: Handy drehen (Querformat)
+    </div>
 
     <section class="transport-row">
       <button id="playBtn" type="button" class="btn-primary">Play</button>
@@ -49,7 +52,6 @@
     </section>
 
     <div id="loadStatus" class="status">Bereit. Klick auf die Zellen, um Schläge zu setzen.</div>
-    <div id="warningBox" class="warning" style="display:none;"></div>
 
     <section id="gridView">
       <div id="grid"></div>
@@ -67,11 +69,30 @@
       <div id="notationPreview" class="notation-preview"></div>
     </section>
 
-    <footer class="app-footer">
+    <section class="info-section">
+      <h2>So geht's</h2>
       <p>
-        Regeln für echte Drummer: Die drei Hi-Hat-Varianten (Closed, Open, Pedal) schließen sich gegenseitig aus.
-        Maximal zwei Toms pro Step. Seltene Kombinationen werden als Hinweis markiert.
+        <strong>Grundprinzip:</strong> Jede Zeile ist ein Schlaginstrument, jede Spalte ein Schlag im Takt (16tel-Raster). Klick auf eine Zelle, um sie zu aktivieren. <strong>Play</strong> spielt das aktuelle Pattern in Schleife.
       </p>
+      <p>
+        <strong>Pattern A, B, C, D:</strong> Vier unabhängige Grooves. Wechseln oben per Klick. Mit <strong>Pattern-Kette</strong> werden sie nacheinander abgespielt — super für Strophe/Refrain.
+      </p>
+      <p>
+        <strong>Länge:</strong> Pro Pattern kannst du 1 bis 4 Takte nutzen. Zwischen den Takten wechselst du über die Takt-Nummern.
+      </p>
+      <p>
+        <strong>Takt kopieren / einfügen:</strong> Wie Copy-Paste im Textprogramm. Aktuellen Takt merken, zu einem anderen Takt (oder Pattern) wechseln, einfügen.
+      </p>
+      <p>
+        <strong>Notenblatt als PDF:</strong> Exportiert alle Patterns mit Inhalt als druckbares Notenblatt in echter Drum-Notation. Perfekt zum Ausdrucken und auf den Notenständer legen.
+      </p>
+      <p>
+        <strong>Hi-Hat-Varianten:</strong> Closed (normale Stick-HH), Open (offen, klingt länger), Pedal (mit dem Fuß geschlossen, dumpfer Ton).
+      </p>
+    </section>
+
+    <footer class="app-footer">
+      <p>toenchen Trackofaktor · v1.0</p>
     </footer>
   </main>
 

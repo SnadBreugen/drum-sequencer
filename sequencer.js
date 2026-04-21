@@ -1,6 +1,7 @@
 /**
  * toenchen Trackofaktor
  * Drum Sequencer mit Notenblatt-Export
+ * Keine Regeln — der Drummer entscheidet selbst, was machbar ist.
  */
 
 (function () {
@@ -10,7 +11,6 @@
   const SLOTS = ['A', 'B', 'C', 'D'];
   const SAMPLE_BASE = 'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/';
 
-  // TRACKS: einige kommen von Oramics (remote), rimshot ist lokal (eigenes Sample)
   const TRACKS = [
     { id: 'cr', label: 'Crash',      group: 'cymbal', sample: 'crash-01.wav', source: 'remote' },
     { id: 'ri', label: 'Ride',       group: 'cymbal', sample: 'ride-01.wav',  source: 'remote' },
@@ -32,63 +32,10 @@
     ri: 0.80, cr: 1.00
   };
 
-  const HIHAT_IDS = ['hh', 'oh', 'ph'];
-  const TOM_IDS   = ['th', 'tm', 'tl'];
-  const SNARE_MUTEX = ['sn', 'rs'];  // Snare und Rimshot schließen sich aus
-
-  const WARNING_PAIRS = [
-    { ids: ['hh', 'ri'], msg: 'Closed HH + Ride auf Schlag %step%: beides Timekeeper, meist eins oder das andere.' },
-    { ids: ['oh', 'ri'], msg: 'Open HH + Ride auf Schlag %step%: beides Timekeeper, meist eins oder das andere.' },
-    { ids: ['cr', 'ri'], msg: 'Crash + Ride auf Schlag %step%: beide Becken gleichzeitig klingt oft matschig.' }
-  ];
-
+  // Keine Mutex-Regeln mehr. Alles ist erlaubt.
   function applyStep(data, trackId, globalStep, value) {
     data[trackId][globalStep] = value;
-    if (!value) return [];
-    const removed = [];
-    if (HIHAT_IDS.includes(trackId)) {
-      for (const other of HIHAT_IDS) {
-        if (other !== trackId && data[other][globalStep]) {
-          data[other][globalStep] = 0;
-          removed.push(other);
-        }
-      }
-    }
-    if (SNARE_MUTEX.includes(trackId)) {
-      for (const other of SNARE_MUTEX) {
-        if (other !== trackId && data[other][globalStep]) {
-          data[other][globalStep] = 0;
-          removed.push(other);
-        }
-      }
-    }
-    if (TOM_IDS.includes(trackId)) {
-      const activeToms = TOM_IDS.filter(id => data[id][globalStep]);
-      if (activeToms.length > 2) {
-        const toRemove = activeToms.find(id => id !== trackId);
-        if (toRemove) {
-          data[toRemove][globalStep] = 0;
-          removed.push(toRemove);
-        }
-      }
-    }
-    return removed;
-  }
-
-  function findWarnings(data, totalSteps) {
-    const warnings = [];
-    for (let s = 0; s < totalSteps; s++) {
-      for (const pair of WARNING_PAIRS) {
-        if (data[pair.ids[0]][s] && data[pair.ids[1]][s]) {
-          warnings.push({
-            step: s,
-            ids: pair.ids,
-            msg: pair.msg.replace('%step%', String(s + 1))
-          });
-        }
-      }
-    }
-    return warnings;
+    return [];
   }
 
   function emptyRow(len) { return new Array(len).fill(0); }
@@ -153,7 +100,6 @@
     audio.loading = true;
     setStatus('Lade Drum-Samples…');
 
-    // Gruppiere nach URL (unterschiedliche Tracks können dasselbe Sample nutzen)
     const uniqueUrls = {};
     TRACKS.forEach(t => {
       const url = sampleUrl(t);
@@ -283,7 +229,6 @@
     const drumGain = DRUM_GAIN[id] || 1.0;
     g.gain.value = (gain || 1.0) * drumGain;
 
-    // Hi-Hats: Hochpass gegen tiefes Rumpeln
     if (id === 'hh' || id === 'oh' || id === 'ph') {
       const highpass = audio.ctx.createBiquadFilter();
       highpass.type = 'highpass';
@@ -311,7 +256,6 @@
     lengthTabs: document.getElementById('lengthTabs'),
     barTabs: document.getElementById('barTabs'),
     status: document.getElementById('loadStatus'),
-    warningBox: document.getElementById('warningBox'),
     playBtn: document.getElementById('playBtn'),
     clearBtn: document.getElementById('clearBtn'),
     bpm: document.getElementById('bpm'),
@@ -365,7 +309,7 @@
     const gStep = globalStep(state.currentBar, sib);
     const wasOn = data[trackId][gStep];
     const newVal = wasOn ? 0 : 1;
-    const removed = applyStep(data, trackId, gStep, newVal);
+    applyStep(data, trackId, gStep, newVal);
     if (newVal) {
       cellEl.classList.add('on');
       ensureAudioReady();
@@ -373,15 +317,6 @@
     } else {
       cellEl.classList.remove('on');
     }
-    removed.forEach(id => {
-      const other = el.grid.querySelector(`.cell[data-track="${id}"][data-sib="${sib}"]`);
-      if (other) other.classList.remove('on');
-    });
-    if (removed.length > 0) {
-      const names = removed.map(id => TRACKS.find(t => t.id === id).label).join(', ');
-      setStatus(`Automatisch deaktiviert: ${names} (Regel-Konflikt).`);
-    }
-    refreshWarnings();
     renderPreviewNotation();
   }
 
@@ -395,42 +330,6 @@
         cell.classList.toggle('on', Boolean(data[track.id][gStep]));
       }
     });
-    applyConflictHighlights();
-  }
-
-  function applyConflictHighlights() {
-    el.grid.querySelectorAll('.cell.conflict').forEach(c => c.classList.remove('conflict'));
-    const data = currentData();
-    const totalSteps = currentBars() * STEPS_PER_BAR;
-    const warnings = findWarnings(data, totalSteps);
-    warnings.forEach(w => {
-      const barOfStep = Math.floor(w.step / STEPS_PER_BAR);
-      if (barOfStep !== state.currentBar) return;
-      const sib = w.step % STEPS_PER_BAR;
-      w.ids.forEach(id => {
-        const cell = el.grid.querySelector(`.cell[data-track="${id}"][data-sib="${sib}"]`);
-        if (cell) cell.classList.add('conflict');
-      });
-    });
-  }
-
-  function refreshWarnings() {
-    const data = currentData();
-    const totalSteps = currentBars() * STEPS_PER_BAR;
-    const warnings = findWarnings(data, totalSteps);
-    if (warnings.length === 0) {
-      el.warningBox.hidden = true;
-      el.warningBox.style.display = 'none';
-      applyConflictHighlights();
-      return;
-    }
-    el.warningBox.hidden = false;
-    el.warningBox.style.display = 'block';
-    el.warningBox.innerHTML =
-      `<strong>${warnings.length} Hinweis${warnings.length > 1 ? 'e' : ''}:</strong> ` +
-      warnings.slice(0, 3).map(w => w.msg).join(' ') +
-      (warnings.length > 3 ? ` (und ${warnings.length - 3} weitere…)` : '');
-    applyConflictHighlights();
   }
 
   function barHasContent(slot, bar) {
@@ -473,7 +372,6 @@
         if (state.currentBar >= currentBars()) state.currentBar = 0;
         rebuildTabs();
         refreshGrid();
-        refreshWarnings();
         renderPreviewNotation();
       });
       el.patternTabs.appendChild(tab);
@@ -511,7 +409,6 @@
     if (state.currentBar >= newBars) state.currentBar = newBars - 1;
     rebuildTabs();
     refreshGrid();
-    refreshWarnings();
     renderPreviewNotation();
   }
 
@@ -538,7 +435,6 @@
     setStatus(`Zwischenablage eingefügt in Takt ${state.currentBar + 1} von Pattern ${state.currentSlot}.`, 'success');
     refreshGrid();
     rebuildTabs();
-    refreshWarnings();
     renderPreviewNotation();
   });
 
@@ -550,7 +446,6 @@
     });
     refreshGrid();
     rebuildTabs();
-    refreshWarnings();
     renderPreviewNotation();
   });
 
@@ -914,7 +809,6 @@
   buildGrid();
   refreshGrid();
   rebuildTabs();
-  refreshWarnings();
 
   function tryInitialRender(attempts) {
     if (typeof Vex !== 'undefined') {

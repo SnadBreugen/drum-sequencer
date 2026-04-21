@@ -18,9 +18,6 @@
   --accent-soft: #e4efde;
   --signal: #5a7a95;
   --signal-soft: #c8d4e0;
-  --warning: #c79400;
-  --warning-soft: #f5e4b0;
-  --warning-dark: #5a4200;
   --mono: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Menlo', monospace;
 }
 
@@ -41,9 +38,6 @@
     --accent-soft: #3a4a30;
     --signal: #7a95b0;
     --signal-soft: #2a3a4a;
-    --warning: #e4b220;
-    --warning-soft: #4a3800;
-    --warning-dark: #ffd560;
   }
 }
 
@@ -73,6 +67,7 @@ body {
   padding-bottom: 0.75rem;
   margin-bottom: 1rem;
   border-bottom: 2px solid var(--border);
+  flex-wrap: wrap;
 }
 .brand {
   margin: 0;
@@ -93,6 +88,23 @@ body {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+/* Mobile-Hinweis: Hochkant-Handy */
+.rotate-hint {
+  display: none;
+  background: var(--accent-soft);
+  border: 1.5px solid var(--accent-dark);
+  color: var(--surface-dark);
+  padding: 10px 12px;
+  margin-bottom: 0.75rem;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rotate-hint::before {
+  content: '↻ ';
+  font-weight: bold;
 }
 
 /* Buttons */
@@ -300,15 +312,6 @@ input[type="range"]::-moz-range-thumb {
 .status.error { color: #a32d2d; }
 .status.error::before { content: '✗ '; }
 
-.warning {
-  padding: 8px 10px;
-  background: var(--warning-soft);
-  border: 1.5px solid var(--warning);
-  color: var(--warning-dark);
-  font-size: 11px;
-  margin-bottom: 0.5rem;
-}
-
 /* Grid */
 #grid, #beatLabels {
   display: grid;
@@ -358,12 +361,6 @@ input[type="range"]::-moz-range-thumb {
 }
 .cell.playing {
   outline: 2px solid var(--signal);
-  outline-offset: -2px;
-  z-index: 1;
-  position: relative;
-}
-.cell.conflict {
-  outline: 2px solid var(--warning);
   outline-offset: -2px;
   z-index: 1;
   position: relative;
@@ -445,6 +442,41 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
+/* Info section */
+.info-section {
+  margin-top: 1.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+}
+.info-section h2 {
+  margin: 0 0 0.5rem;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.info-section h2::before {
+  content: '[ ';
+  color: var(--accent-dark);
+}
+.info-section h2::after {
+  content: ' ]';
+  color: var(--accent-dark);
+}
+.info-section p {
+  margin: 0 0 0.5rem;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.info-section p:last-child { margin-bottom: 0; }
+.info-section strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 /* Footer */
 .app-footer {
   margin-top: 1.5rem;
@@ -456,3 +488,80 @@ input[type="range"]::-moz-range-thumb {
   letter-spacing: 0.05em;
 }
 .app-footer p { margin: 0; }
+
+/* ==========================================================================
+   MOBILE & TABLET OPTIMIERUNGEN
+   ========================================================================== */
+
+/* Kleine Bildschirme insgesamt (unter 900px) */
+@media (max-width: 900px) {
+  body { padding: 0.5rem; }
+  .app { padding: 0.75rem; }
+  .app-header { margin-bottom: 0.75rem; }
+  .brand { font-size: 17px; }
+  .subtitle { font-size: 10px; }
+
+  /* Grid-Label schmaler machen, damit mehr Platz für Zellen */
+  #grid, #beatLabels {
+    grid-template-columns: 80px repeat(16, 1fr);
+  }
+  .row-label {
+    font-size: 9px;
+    padding: 0 4px;
+    letter-spacing: 0.03em;
+  }
+  .row-label .preview-btn {
+    width: 18px; height: 18px;
+    margin-right: 4px;
+    font-size: 10px;
+  }
+  .cell { height: 26px; }
+}
+
+/* Hochkant-Handy — Rotier-Hinweis zeigen */
+@media (max-width: 600px) and (orientation: portrait) {
+  .rotate-hint { display: block; }
+  /* Grid wird extrem eng, trotzdem nutzbar */
+  #grid, #beatLabels {
+    grid-template-columns: 60px repeat(16, 1fr);
+  }
+  .cell { height: 22px; }
+  .row-label { font-size: 8px; padding: 0 3px; }
+  .row-label .preview-btn { width: 14px; height: 14px; margin-right: 2px; font-size: 9px; }
+  .row-label span { font-size: 8px; }
+  .beat-label { font-size: 8px; }
+}
+
+/* Quer-Handy — hier soll's gut bedienbar sein */
+@media (max-width: 950px) and (orientation: landscape) and (max-height: 500px) {
+  body { padding: 0.25rem; }
+  .app { padding: 0.5rem; border-width: 1px; }
+  .app-header {
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.5rem;
+    gap: 0.5rem;
+  }
+  .brand { font-size: 15px; }
+  .subtitle { display: none; }  /* Platz sparen */
+  .transport-row, .pattern-row {
+    padding: 5px 7px;
+    margin-bottom: 0.4rem;
+    gap: 6px;
+  }
+  .bpm-control input { width: 80px; }
+  .chain-toggle { font-size: 9px; }
+
+  #grid, #beatLabels {
+    grid-template-columns: 70px repeat(16, 1fr);
+  }
+  .cell { height: 24px; }
+  .row-label { font-size: 9px; padding: 0 4px; }
+  .beat-label { font-size: 8px; }
+
+  /* Status und Notations-Vorschau kompakter */
+  .status { font-size: 10px; min-height: 14px; padding: 2px 0; }
+  .preview-section { margin-top: 0.6rem; padding: 0.5rem 0.7rem; }
+  .notation-preview { min-height: 140px; }
+  .info-section { display: none; }  /* Im Quer-Handy ausblenden */
+  .app-footer { display: none; }
+}
