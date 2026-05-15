@@ -1,6 +1,8 @@
 /**
  * DR-25840 / toenchen Trackofaktor — Drum Sequencer mit Multi-Kit-Support
- * Kits: Acoustic (Pearl Master Studio), LinnDrum (LM-2)
+ * Hi-Hat-Logik:
+ *   - Mutex: hh / oh / ph schließen sich auf demselben Step gegenseitig aus
+ *   - Auto-Choke: laufende Open-HH wird gestoppt, sobald hh oder ph getriggert wird
  */
 
 (function () {
@@ -9,45 +11,35 @@
   const STEPS_PER_BAR = 16;
   const SLOTS = ['A', 'B', 'C', 'D'];
 
-  // ============================================================
-  // DRUM KITS — zwei Soundsets von Oramics
-  // ============================================================
   const KITS = {
     acoustic: {
       label: 'Acoustic',
       base: 'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/',
       files: {
-        cr: 'crash-01.wav',
-        ri: 'ride-01.wav',
-        oh: 'hihat-open.wav',
-        hh: 'hihat-closed.wav',
-        ph: 'hihat-closed.wav',
-        th: 'tom-01.wav',
-        tm: 'tom-02.wav',
-        tl: 'tom-03.wav',
-        sn: 'snare-01.wav',
-        kd: 'kick-01.wav'
+        cr: 'crash-01.wav', ri: 'ride-01.wav',
+        oh: 'hihat-open.wav', hh: 'hihat-closed.wav', ph: 'hihat-closed.wav',
+        th: 'tom-01.wav', tm: 'tom-02.wav', tl: 'tom-03.wav',
+        sn: 'snare-01.wav', kd: 'kick-01.wav'
       }
     },
     linndrum: {
       label: 'LinnDrum',
       base: 'https://oramics.github.io/sampled/DM/LM-2/samples/',
       files: {
-        cr: 'crash.wav',
-        ri: 'ride.wav',
-        oh: 'hihat-open.wav',
-        hh: 'hihat-closed.wav',
-        ph: 'hihat-closed.wav',
-        th: 'tom-h.wav',
-        tm: 'tom-m.wav',
-        tl: 'tom-l.wav',
-        sn: 'snare-m.wav',
-        kd: 'kick.wav'
+        cr: 'crash.wav', ri: 'ride.wav',
+        oh: 'hihat-open.wav', hh: 'hihat-closed.wav', ph: 'hihat-closed.wav',
+        th: 'tom-h.wav', tm: 'tom-m.wav', tl: 'tom-l.wav',
+        sn: 'snare-m.wav', kd: 'kick.wav'
       }
     }
   };
 
   const RIM_CLICK_SAMPLE = 'rimshot.wav';
+
+  // Hi-Hat-IDs (für Mutex und Choke-Logik)
+  const HIHAT_IDS = ['hh', 'oh', 'ph'];
+  // Welche IDs würgen die Open-HH ab?
+  const CHOKES_OPEN = ['hh', 'ph'];
 
   const TRACKS = [
     { id: 'cr', label: 'Crash',      group: 'cymbal' },
@@ -134,7 +126,9 @@
   // ============================================================
   const audio = {
     ctx: null, masterGain: null, buffers: {},
-    loadingKit: null, loadedKit: null
+    loadingKit: null, loadedKit: null,
+    // Für Auto-Choke: laufender Open-HH-Source + sein Gain-Node
+    openHHActive: null  // { source, gainNode, stopTime }
   };
 
   function ensureCtx() {
@@ -211,8 +205,32 @@
     }
   }
 
+  // Würgt eine laufende Open-HH ab — kurzer Fade-out (5ms) damit kein Klick entsteht
+  function chokeOpenHH(when) {
+    if (!audio.openHHActive) return;
+    const { source, gainNode } = audio.openHHActive;
+    const stopAt = when || audio.ctx.currentTime;
+    const fadeMs = 0.005; // 5 Millisekunden weicher Fade
+    try {
+      gainNode.gain.cancelScheduledValues(stopAt);
+      gainNode.gain.setValueAtTime(gainNode.gain.value, stopAt);
+      gainNode.gain.linearRampToValueAtTime(0, stopAt + fadeMs);
+      source.stop(stopAt + fadeMs + 0.001);
+    } catch (e) {
+      // Source war evtl. schon zu Ende — egal
+    }
+    audio.openHHActive = null;
+  }
+
   function playSample(id, when, gain) {
     if (!audio.buffers[id]) return;
+    const playAt = when || audio.ctx.currentTime;
+
+    // AUTO-CHOKE: wenn eine schließende Hi-Hat kommt, würge die laufende Open-HH ab
+    if (CHOKES_OPEN.indexOf(id) !== -1) {
+      chokeOpenHH(playAt);
+    }
+
     const src = audio.ctx.createBufferSource();
     src.buffer = audio.buffers[id];
     const g = audio.ctx.createGain();
@@ -237,7 +255,18 @@
     } else {
       src.connect(g).connect(audio.masterGain);
     }
-    src.start(when || audio.ctx.currentTime);
+    src.start(playAt);
+
+    // OPEN-HH MERKEN für späteres Choken
+    if (id === 'oh') {
+      audio.openHHActive = { source: src, gainNode: g, stopTime: playAt + (src.buffer.duration || 1.0) };
+      // Wenn das Sample natürlich ausläuft, das aktive Flag wieder löschen
+      src.onended = () => {
+        if (audio.openHHActive && audio.openHHActive.source === src) {
+          audio.openHHActive = null;
+        }
+      };
+    }
   }
 
   // ============================================================
@@ -298,11 +327,35 @@
     });
   }
 
+  // HI-HAT-MUTEX: Wenn auf demselben Step bereits eine andere Hi-Hat aktiv ist,
+  // wird sie entfernt bevor die neue gesetzt wird.
+  function applyHihatMutex(data, trackId, gStep) {
+    if (HIHAT_IDS.indexOf(trackId) === -1) return;
+    HIHAT_IDS.forEach(otherId => {
+      if (otherId !== trackId && data[otherId][gStep]) {
+        data[otherId][gStep] = 0;
+        // Auch die UI-Zelle aktualisieren
+        const sib = gStep % STEPS_PER_BAR;
+        const bar = Math.floor(gStep / STEPS_PER_BAR);
+        if (bar === state.currentBar) {
+          const otherCell = el.grid.querySelector(`.cell[data-track="${otherId}"][data-sib="${sib}"]`);
+          if (otherCell) otherCell.classList.remove('on');
+        }
+      }
+    });
+  }
+
   function handleCellClick(trackId, sib, cellEl) {
     const data = currentData();
     const gStep = globalStep(state.currentBar, sib);
     const wasOn = data[trackId][gStep];
     const newVal = wasOn ? 0 : 1;
+
+    if (newVal) {
+      // Beim Aktivieren: erst Mutex anwenden (andere Hi-Hats auf gleichem Step entfernen)
+      applyHihatMutex(data, trackId, gStep);
+    }
+
     data[trackId][gStep] = newVal;
     if (newVal) {
       cellEl.classList.add('on');
@@ -457,9 +510,6 @@
   el.bpm.addEventListener('input', e => { el.bpmOut.textContent = e.target.value; });
   el.chainMode.addEventListener('change', e => { state.chainMode = e.target.checked; });
 
-  // ============================================================
-  // PLAYBACK
-  // ============================================================
   let schedulerInterval = null;
   let nextStepTime = 0;
 
@@ -504,6 +554,8 @@
       state.currentStep = -1;
       el.playBtn.innerHTML = '▶ PLAY';
       el.grid.querySelectorAll('.cell.playing').forEach(c => c.classList.remove('playing'));
+      // Beim Stop auch laufende Open-HH abwürgen
+      chokeOpenHH();
       rebuildTabs();
       return;
     }
@@ -681,9 +733,6 @@
     });
   }
 
-  // ============================================================
-  // PDF-EXPORT
-  // ============================================================
   function getJsPDF() {
     if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
     if (window.jsPDF) return window.jsPDF;
@@ -809,9 +858,6 @@
 
   el.exportPdfBtn.addEventListener('click', exportPDF);
 
-  // ============================================================
-  // INIT
-  // ============================================================
   buildGrid();
   refreshGrid();
   rebuildTabs();
