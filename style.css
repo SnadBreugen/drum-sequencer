@@ -1,851 +1,752 @@
-/**
- * toenchen Trackofaktor — Drum Sequencer mit Multi-Kit-Support
- */
+/* toenchen Trackofaktor / DR-25840 — VST-Plugin / Hardware-Drumcomputer-Style */
 
-(function () {
-  'use strict';
+* { box-sizing: border-box; }
 
-  const STEPS_PER_BAR = 16;
-  const SLOTS = ['A', 'B', 'C', 'D'];
+:root {
+  --bg-deep: #0a0a0d;
+  --bg: #14141a;
+  --hw-1: #1d1d25;
+  --hw-2: #252530;
+  --hw-3: #16161c;
+  --panel: #1a1a22;
+  --panel-edge: #2a2a35;
+  --pad-off: #2a2a33;
+  --pad-off-top: #36363f;
+  --pad-off-bottom: #1f1f26;
+  --rim: #0a0a0d;
+  --metal: #4a4a55;
+  --screw: #2c2c35;
 
-  // ============================================================
-  // DRUM KITS — drei verschiedene Soundsets von Oramics
-  // ============================================================
-  const KITS = {
-    acoustic: {
-      label: 'Acoustic',
-      base: 'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/',
-      files: {
-        cr: 'crash-01.wav',
-        ri: 'ride-01.wav',
-        oh: 'hihat-open.wav',
-        hh: 'hihat-closed.wav',
-        ph: 'hihat-closed.wav',
-        th: 'tom-01.wav',
-        tm: 'tom-02.wav',
-        tl: 'tom-03.wav',
-        sn: 'snare-01.wav',
-        kd: 'kick-01.wav'
-      }
-    },
-    tr808: {
-      label: 'TR-808',
-      base: 'https://oramics.github.io/sampled/DM/TR-808/samples/',
-      files: {
-        cr: 'cymbal.wav',
-        ri: 'cymbal.wav',
-        oh: 'hihat-open.wav',
-        hh: 'hihat-closed.wav',
-        ph: 'hihat-closed.wav',
-        th: 'tom-h.wav',
-        tm: 'tom-m.wav',
-        tl: 'tom-l.wav',
-        sn: 'snare.wav',
-        kd: 'kick.wav'
-      }
-    },
-    linndrum: {
-      label: 'LinnDrum',
-      base: 'https://oramics.github.io/sampled/DM/LM-2/samples/',
-      files: {
-        cr: 'crash.wav',
-        ri: 'ride.wav',
-        oh: 'hihat-open.wav',
-        hh: 'hihat-closed.wav',
-        ph: 'hihat-closed.wav',
-        th: 'tom-h.wav',
-        tm: 'tom-m.wav',
-        tl: 'tom-l.wav',
-        sn: 'snare-m.wav',
-        kd: 'kick.wav'
-      }
-    }
-  };
+  --text: #e6e6ee;
+  --text-muted: #888894;
+  --text-faint: #56565f;
+  --text-on-led: #0a0a0d;
 
-  // Rim-Click bleibt immer dein lokales Sample
-  const RIM_CLICK_SAMPLE = 'rimshot.wav';
+  --led-yellow: #ffd54a;
+  --led-yellow-soft: #8a6e1a;
+  --led-green: #5dffa0;
+  --led-green-soft: #1e6b40;
+  --led-orange: #ff9a3c;
+  --led-orange-soft: #8a4e1a;
+  --led-blue: #4ad8ff;
+  --led-blue-soft: #1a5e80;
+  --led-pink: #ff5aa8;
+  --led-pink-soft: #80224c;
 
-  const TRACKS = [
-    { id: 'cr', label: 'Crash',      group: 'cymbal' },
-    { id: 'ri', label: 'Ride',       group: 'cymbal' },
-    { id: 'oh', label: 'Open HH',    group: 'hihat'  },
-    { id: 'hh', label: 'Closed HH',  group: 'hihat'  },
-    { id: 'ph', label: 'Pedal HH',   group: 'hihat'  },
-    { id: 'th', label: 'Tom hi',     group: 'tom'    },
-    { id: 'tm', label: 'Tom mid',    group: 'tom'    },
-    { id: 'tl', label: 'Tom lo',     group: 'tom'    },
-    { id: 'rs', label: 'Rim-Click',  group: 'drum'   },
-    { id: 'sn', label: 'Snare',      group: 'drum'   },
-    { id: 'kd', label: 'Kick',       group: 'drum'   }
-  ];
+  --accent: #c8a8ff;
+  --accent-bright: #e0c8ff;
+  --accent-dark: #8868dd;
+  --accent-glow: rgba(200, 168, 255, 0.4);
 
-  const DRUM_GAIN = {
-    kd: 1.15, sn: 1.05, rs: 1.00,
-    hh: 0.80, oh: 0.90, ph: 0.30,
-    th: 1.00, tm: 1.00, tl: 1.00,
-    ri: 0.80, cr: 1.00
-  };
+  --success: #5dffa0;
+  --error: #ff5e7a;
+  --signal: #4ad8ff;
 
-  function steps(...positions) {
-    const arr = new Array(STEPS_PER_BAR).fill(0);
-    positions.forEach(p => { if (p >= 1 && p <= 16) arr[p - 1] = 1; });
-    return arr;
+  --mono: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Menlo', monospace;
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem;
+  background:
+    radial-gradient(ellipse 1200px 600px at 50% -200px, #1a1428 0%, transparent 70%),
+    radial-gradient(ellipse 800px 400px at 0% 50%, rgba(74, 216, 255, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 800px 400px at 100% 100%, rgba(200, 168, 255, 0.04) 0%, transparent 60%),
+    var(--bg-deep);
+  min-height: 100vh;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
+.app {
+  max-width: 1180px;
+  margin: 0 auto;
+  background: linear-gradient(180deg, var(--hw-2) 0%, var(--hw-1) 8%, var(--hw-1) 92%, var(--hw-3) 100%);
+  border: 1px solid #000;
+  border-radius: 14px;
+  padding: 1.5rem;
+  position: relative;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    inset 1px 0 0 rgba(255, 255, 255, 0.02),
+    inset -1px 0 0 rgba(0, 0, 0, 0.3),
+    0 20px 60px rgba(0, 0, 0, 0.6),
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    0 0 80px rgba(200, 168, 255, 0.04);
+}
+
+.app::before,
+.app::after {
+  content: '';
+  position: absolute;
+  width: 8px; height: 8px;
+  background: radial-gradient(circle at 30% 30%, #4a4a55 0%, #1a1a20 70%, #000 100%);
+  border-radius: 50%;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.05);
+}
+.app::before { top: 10px; left: 10px; }
+.app::after  { top: 10px; right: 10px; }
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid #000;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04);
+  flex-wrap: wrap;
+}
+.brand-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.brand {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: linear-gradient(180deg, #fff 0%, #b8b8c8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.3);
+}
+.subtitle {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.brand-led {
+  margin-left: auto;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--led-green);
+  box-shadow: 0 0 4px var(--led-green), 0 0 10px var(--led-green), inset 0 -1px 0 rgba(0,0,0,0.3);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.rotate-hint {
+  display: none;
+  background: linear-gradient(180deg, #3a2a1a 0%, #2a1f10 100%);
+  border: 1px solid var(--led-orange-soft);
+  color: var(--led-orange);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 1rem;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  box-shadow: 0 0 20px rgba(255, 154, 60, 0.15), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.rotate-hint::before { content: '↻ '; font-weight: bold; }
+
+.hw-panel {
+  background: linear-gradient(180deg, #0e0e14 0%, #14141a 50%, #0e0e14 100%);
+  border: 1px solid #000;
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.75rem;
+  box-shadow:
+    inset 0 1px 2px rgba(0,0,0,0.8),
+    inset 0 -1px 0 rgba(255,255,255,0.04),
+    0 1px 0 rgba(255,255,255,0.03);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.hw-btn,
+button {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  background: linear-gradient(180deg, #3a3a44 0%, #28282f 50%, #1c1c22 100%);
+  border: 1px solid #000;
+  border-radius: 6px;
+  padding: 7px 14px;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 -1px 0 rgba(0,0,0,0.4),
+    0 2px 0 rgba(0,0,0,0.6),
+    0 3px 6px rgba(0,0,0,0.4);
+  transition: all 0.05s ease;
+  position: relative;
+}
+button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #44444f 0%, #303038 50%, #222229 100%);
+}
+button:active:not(:disabled) {
+  background: linear-gradient(180deg, #1c1c22 0%, #28282f 50%, #3a3a44 100%);
+  box-shadow:
+    inset 0 2px 4px rgba(0,0,0,0.6),
+    inset 0 -1px 0 rgba(255,255,255,0.04);
+  transform: translateY(2px);
+}
+button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.btn-primary {
+  min-width: 100px;
+  background: linear-gradient(180deg, #a888ff 0%, #8868dd 50%, #6848bd 100%);
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+  border-color: #4a2a8a;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.3),
+    inset 0 -1px 0 rgba(0,0,0,0.3),
+    0 2px 0 #3a1a7a,
+    0 3px 12px rgba(200, 168, 255, 0.4);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #b898ff 0%, #9878ed 50%, #7858cd 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.3),
+    0 2px 0 #3a1a7a,
+    0 3px 20px rgba(200, 168, 255, 0.6);
+}
+
+.btn-accent {
+  background: linear-gradient(180deg, #6ae3ff 0%, #4ad8ff 50%, #2ab8df 100%);
+  color: #0a2030;
+  font-weight: 700;
+  border-color: #1a5e80;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 2px 0 #1a4a70,
+    0 3px 12px rgba(74, 216, 255, 0.3);
+}
+.btn-accent:hover:not(:disabled) {
+  background: linear-gradient(180deg, #7af3ff 0%, #5ae8ff 50%, #3ac8ef 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    0 2px 0 #1a4a70,
+    0 3px 20px rgba(74, 216, 255, 0.5);
+}
+
+.btn-small { font-size: 10px; padding: 5px 10px; }
+
+.bpm-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bpm-control label,
+.bpm-control span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.bpm-control span {
+  color: var(--led-green);
+  text-shadow: 0 0 4px var(--led-green);
+  min-width: 32px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 8px;
+  background: #050507;
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 18px;
+  cursor: pointer;
+  width: 110px;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #050507;
+  border: 1px solid #000;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  background: #050507;
+  border: 1px solid #000;
+  border-radius: 2px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 16px;
+  background: linear-gradient(180deg, #c8c8d0 0%, #888892 100%);
+  border: 1px solid #000;
+  border-radius: 3px;
+  margin-top: -7px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.5),
+    0 1px 2px rgba(0,0,0,0.6);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 16px;
+  background: linear-gradient(180deg, #c8c8d0 0%, #888892 100%);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+}
+
+.group,
+.kit-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.group-label {
+  font-size: 9px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+}
+.tab-group {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: #050507;
+  border: 1px solid #000;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+}
+.mini-tab {
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 24px;
+  text-align: center;
+  background: linear-gradient(180deg, #2a2a32 0%, #1c1c22 100%);
+  border: 1px solid #0a0a0d;
+  border-radius: 2px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.05),
+    0 1px 2px rgba(0,0,0,0.3);
+  transition: all 0.08s;
+}
+.mini-tab:hover {
+  background: linear-gradient(180deg, #36363e 0%, #28282f 100%);
+  color: var(--text);
+}
+.mini-tab.active {
+  background: linear-gradient(180deg, #c8a8ff 0%, #8868dd 100%);
+  color: #fff;
+  border-color: #4a2a8a;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.3),
+    0 0 8px rgba(200, 168, 255, 0.4);
+}
+.mini-tab.playing-indicator {
+  animation: tab-pulse 0.5s ease-in-out infinite;
+}
+@keyframes tab-pulse {
+  0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 8px rgba(74, 216, 255, 0.4); }
+  50% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 16px rgba(74, 216, 255, 0.8); }
+}
+.mini-tab.has-content::after {
+  content: '';
+  display: inline-block;
+  width: 4px; height: 4px;
+  background: var(--led-green);
+  border-radius: 50%;
+  margin-left: 5px;
+  vertical-align: middle;
+  box-shadow: 0 0 4px var(--led-green);
+}
+
+.chain-toggle {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.chain-toggle input {
+  accent-color: var(--accent);
+  width: 14px; height: 14px;
+  cursor: pointer;
+}
+
+.status {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0.5rem 0 0.75rem;
+  padding: 6px 12px;
+  min-height: 26px;
+  background: #050507;
+  border: 1px solid #000;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+  letter-spacing: 0.02em;
+}
+.status::before {
+  content: '> ';
+  color: var(--led-green);
+  text-shadow: 0 0 4px var(--led-green);
+}
+.status.success { color: var(--led-green); text-shadow: 0 0 4px var(--led-green); }
+.status.success::before { content: '✓ '; }
+.status.error { color: var(--error); text-shadow: 0 0 4px var(--error); }
+.status.error::before { content: '✗ '; color: var(--error); }
+
+.grid-panel {
+  padding: 1rem 1.1rem 0.75rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+#grid {
+  display: grid;
+  grid-template-columns: 130px repeat(16, 1fr);
+  gap: 4px;
+  padding: 0;
+}
+#beatLabels {
+  display: grid;
+  grid-template-columns: 130px repeat(16, 1fr);
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0;
+}
+.beat-label {
+  grid-column: span 4;
+  text-align: center;
+  font-size: 9px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+}
+
+.row-label {
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  white-space: nowrap;
+  height: 32px;
+  background: linear-gradient(180deg, #2a2a32 0%, #1c1c22 100%);
+  border: 1px solid #000;
+  border-radius: 4px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 1px 2px rgba(0,0,0,0.3);
+}
+.row-label .preview-btn {
+  padding: 0;
+  font-size: 12px;
+  width: 22px; height: 22px;
+  min-width: 0;
+  margin-right: 8px;
+  background: linear-gradient(180deg, #1c1c22 0%, #0c0c12 100%);
+  border: 1px solid #000;
+  border-radius: 50%;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: none;
+  letter-spacing: 0;
+  text-shadow: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 -1px 1px rgba(0,0,0,0.5);
+  transition: all 0.08s;
+}
+.row-label .preview-btn:hover {
+  color: var(--accent-bright);
+  background: linear-gradient(180deg, #2c2c32 0%, #1c1c22 100%);
+}
+.row-label .preview-btn:active {
+  transform: translateY(1px);
+}
+
+.cell {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #000;
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--pad-off-top) 0%, var(--pad-off) 50%, var(--pad-off-bottom) 100%);
+  cursor: pointer;
+  user-select: none;
+  padding: 0;
+  min-width: 0;
+  text-transform: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    inset 0 -1px 0 rgba(0,0,0,0.4),
+    0 1px 2px rgba(0,0,0,0.4);
+  transition: all 0.08s ease;
+  position: relative;
+}
+.cell::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 3px;
+  pointer-events: none;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.25);
+}
+.cell:hover {
+  background: linear-gradient(180deg, #404048 0%, #303038 50%, #28282e 100%);
+}
+.cell:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 2px 3px rgba(0,0,0,0.5);
+}
+
+.cell.beat-start {
+  box-shadow:
+    inset 3px 0 0 var(--accent-dark),
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    inset 0 -1px 0 rgba(0,0,0,0.4),
+    0 1px 2px rgba(0,0,0,0.4);
+}
+
+.cell.on {
+  background: linear-gradient(180deg, var(--led-green) 0%, var(--led-green-soft) 100%);
+  border-color: #000;
+  color: var(--text-on-led);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 0 12px var(--led-green),
+    0 1px 2px rgba(0,0,0,0.4);
+}
+.cell.on[data-track="cr"],
+.cell.on[data-track="ri"] {
+  background: linear-gradient(180deg, var(--led-yellow) 0%, var(--led-yellow-soft) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 0 12px var(--led-yellow),
+    0 1px 2px rgba(0,0,0,0.4);
+}
+.cell.on[data-track="hh"],
+.cell.on[data-track="oh"],
+.cell.on[data-track="ph"] {
+  background: linear-gradient(180deg, var(--led-green) 0%, var(--led-green-soft) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 0 12px var(--led-green),
+    0 1px 2px rgba(0,0,0,0.4);
+}
+.cell.on[data-track="th"],
+.cell.on[data-track="tm"],
+.cell.on[data-track="tl"] {
+  background: linear-gradient(180deg, var(--led-orange) 0%, var(--led-orange-soft) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 0 12px var(--led-orange),
+    0 1px 2px rgba(0,0,0,0.4);
+}
+.cell.on[data-track="sn"],
+.cell.on[data-track="rs"] {
+  background: linear-gradient(180deg, var(--led-blue) 0%, var(--led-blue-soft) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 0 12px var(--led-blue),
+    0 1px 2px rgba(0,0,0,0.4);
+}
+.cell.on[data-track="kd"] {
+  background: linear-gradient(180deg, var(--led-pink) 0%, var(--led-pink-soft) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 0 12px var(--led-pink),
+    0 1px 2px rgba(0,0,0,0.4);
+}
+
+.cell.playing {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+  filter: brightness(1.4);
+  z-index: 1;
+  position: relative;
+}
+.cell.on.playing {
+  filter: brightness(1.6);
+}
+
+.preview-section {
+  margin-top: 1.25rem;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(180deg, #0e0e14 0%, #14141a 100%);
+  border: 1px solid #000;
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 2px rgba(0,0,0,0.8),
+    inset 0 -1px 0 rgba(255,255,255,0.04);
+}
+.preview-title {
+  margin: 0 0 0.6rem;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--led-green);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 4px var(--led-green);
+}
+.preview-title::before { content: '◉ '; }
+.notation-preview {
+  overflow-x: auto;
+  min-height: 200px;
+  background: #f4f2ed;
+  border: 1px solid #000;
+  border-radius: 4px;
+  padding: 8px 12px;
+  box-shadow:
+    inset 0 2px 4px rgba(0,0,0,0.6),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
+}
+.notation-preview svg {
+  display: block;
+  max-width: 100%;
+}
+
+.info-section {
+  margin-top: 1.25rem;
+  padding: 1rem 1.2rem;
+  background: linear-gradient(180deg, #1a1a22 0%, #14141a 100%);
+  border: 1px solid #000;
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    0 1px 2px rgba(0,0,0,0.3);
+}
+.info-section h2 {
+  margin: 0 0 0.75rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--led-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 4px rgba(74, 216, 255, 0.3);
+}
+.info-section h2::before {
+  content: '— ';
+  color: var(--text-faint);
+  text-shadow: none;
+}
+.info-section p {
+  margin: 0 0 0.6rem;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+.info-section p:last-child { margin-bottom: 0; }
+.info-section strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.note-list {
+  margin-left: 1em;
+  font-size: 11px !important;
+  line-height: 1.8 !important;
+}
+
+.app-footer {
+  margin-top: 1.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #000;
+  box-shadow: 0 -1px 0 rgba(255,255,255,0.04);
+  color: var(--text-faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+.app-footer p { margin: 0; }
+
+@media (max-width: 900px) {
+  body { padding: 0.5rem; }
+  .app { padding: 0.9rem; }
+  .app::before, .app::after { display: none; }
+  .brand { font-size: 18px; }
+  .subtitle { font-size: 10px; }
+  #grid, #beatLabels {
+    grid-template-columns: 90px repeat(16, 1fr);
   }
-
-  const DEFAULT_PATTERN_A = {
-    bars: 1,
-    data: {
-      cr: steps(), ri: steps(), oh: steps(),
-      hh: steps(1, 3, 5, 7, 9, 11, 13, 15),
-      ph: steps(), th: steps(), tm: steps(), tl: steps(),
-      rs: steps(),
-      sn: steps(5, 13),
-      kd: steps(1, 9)
-    }
-  };
-
-  function emptyRow(len) { return new Array(len).fill(0); }
-  function emptyPattern(bars) {
-    const len = bars * STEPS_PER_BAR;
-    const p = {};
-    TRACKS.forEach(t => { p[t.id] = emptyRow(len); });
-    return p;
+  .row-label {
+    font-size: 9px;
+    padding: 0 6px;
+    height: 28px;
   }
-
-  const state = {
-    patterns: {},
-    currentSlot: 'A',
-    currentBar: 0,
-    playing: false,
-    currentStep: -1,
-    chainMode: false,
-    chainPlayingSlot: 'A',
-    barClipboard: null,
-    currentKit: 'acoustic'
-  };
-
-  SLOTS.forEach(slot => {
-    state.patterns[slot] = { bars: 1, data: emptyPattern(1) };
-  });
-  state.patterns.A = {
-    bars: DEFAULT_PATTERN_A.bars,
-    data: (() => {
-      const d = {};
-      TRACKS.forEach(t => {
-        d[t.id] = DEFAULT_PATTERN_A.data[t.id]
-          ? DEFAULT_PATTERN_A.data[t.id].slice()
-          : emptyRow(DEFAULT_PATTERN_A.bars * STEPS_PER_BAR);
-      });
-      return d;
-    })()
-  };
-
-  const currentSlot = () => state.patterns[state.currentSlot];
-  const currentData = () => currentSlot().data;
-  const currentBars = () => currentSlot().bars;
-  const globalStep  = (bar, sib) => bar * STEPS_PER_BAR + sib;
-
-  // ============================================================
-  // AUDIO
-  // ============================================================
-  const audio = {
-    ctx: null, masterGain: null, buffers: {},
-    loadingKit: null, loadedKit: null
-  };
-
-  function ensureCtx() {
-    if (!audio.ctx) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      audio.ctx = new AC();
-      audio.masterGain = audio.ctx.createGain();
-      audio.masterGain.gain.value = 1.0;
-      audio.masterGain.connect(audio.ctx.destination);
-    }
-    if (audio.ctx.state === 'suspended') audio.ctx.resume();
-    return audio.ctx;
+  .row-label .preview-btn {
+    width: 18px; height: 18px;
+    margin-right: 4px;
+    font-size: 10px;
   }
+  .cell { height: 28px; }
+}
 
-  function loadSampleBuffer(url) {
-    return fetch(url)
-      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
-      .then(buf => new Promise((res, rej) => audio.ctx.decodeAudioData(buf, res, rej)));
+@media (max-width: 600px) and (orientation: portrait) {
+  .rotate-hint { display: block; }
+  #grid, #beatLabels {
+    grid-template-columns: 70px repeat(16, 1fr);
   }
-
-  function loadKit(kitId) {
-    if (audio.loadingKit === kitId || audio.loadedKit === kitId) {
-      return audio.loadingKit ? audio._kitPromise : Promise.resolve();
-    }
-    ensureCtx();
-    const kit = KITS[kitId];
-    if (!kit) return Promise.resolve();
-    audio.loadingKit = kitId;
-    audio.buffers = {};
-    setStatus(`Lade Kit: ${kit.label}…`);
-
-    // Eindeutige URLs sammeln (mehrere Tracks teilen sich teilweise dasselbe Sample)
-    const urlMap = {};
-    Object.keys(kit.files).forEach(trackId => {
-      const url = kit.base + kit.files[trackId];
-      if (!urlMap[url]) urlMap[url] = [];
-      urlMap[url].push(trackId);
-    });
-
-    // Rim-Click separat (lokal)
-    const promises = Object.keys(urlMap).map(url =>
-      loadSampleBuffer(url)
-        .then(buf => { urlMap[url].forEach(id => { audio.buffers[id] = buf; }); })
-        .catch(err => { console.warn('Sample fail', url, err); })
-    );
-    // Rim-Click immer dazu
-    promises.push(
-      loadSampleBuffer(RIM_CLICK_SAMPLE)
-        .then(buf => { audio.buffers.rs = buf; })
-        .catch(err => {
-          console.warn('Rim-Click fail, fallback to snare', err);
-          if (audio.buffers.sn) audio.buffers.rs = audio.buffers.sn;
-        })
-    );
-
-    audio._kitPromise = Promise.all(promises).then(() => {
-      const loaded = Object.keys(audio.buffers).length;
-      if (loaded >= 6) {
-        setStatus(`Kit "${kit.label}" geladen (${loaded}/${TRACKS.length} Samples).`, 'success');
-      } else {
-        setStatus(`Kit "${kit.label}" unvollständig (${loaded} Samples).`, 'error');
-      }
-      audio.loadedKit = kitId;
-      audio.loadingKit = null;
-    }).catch(err => {
-      setStatus(`Kit-Ladefehler: ${err.message}`, 'error');
-      audio.loadingKit = null;
-    });
-
-    return audio._kitPromise;
-  }
-
-  function ensureAudioReady() {
-    ensureCtx();
-    if (audio.loadedKit !== state.currentKit && audio.loadingKit !== state.currentKit) {
-      loadKit(state.currentKit);
-    }
-  }
-
-  function playSample(id, when, gain) {
-    if (!audio.buffers[id]) return;
-    const src = audio.ctx.createBufferSource();
-    src.buffer = audio.buffers[id];
-    const g = audio.ctx.createGain();
-    const drumGain = DRUM_GAIN[id] || 1.0;
-    g.gain.value = (gain || 1.0) * drumGain;
-
-    if (id === 'hh' || id === 'oh' || id === 'ph') {
-      const highpass = audio.ctx.createBiquadFilter();
-      highpass.type = 'highpass';
-      highpass.frequency.value = 380;
-      highpass.Q.value = 0.7;
-
-      if (id === 'ph') {
-        const lowpass = audio.ctx.createBiquadFilter();
-        lowpass.type = 'lowpass';
-        lowpass.frequency.value = 4500;
-        lowpass.Q.value = 0.7;
-        src.connect(highpass).connect(lowpass).connect(g).connect(audio.masterGain);
-      } else {
-        src.connect(highpass).connect(g).connect(audio.masterGain);
-      }
-    } else {
-      src.connect(g).connect(audio.masterGain);
-    }
-    src.start(when || audio.ctx.currentTime);
-  }
-
-  // ============================================================
-  // UI
-  // ============================================================
-  const el = {
-    grid: document.getElementById('grid'),
-    patternTabs: document.getElementById('patternTabs'),
-    lengthTabs: document.getElementById('lengthTabs'),
-    barTabs: document.getElementById('barTabs'),
-    kitTabs: document.getElementById('kitTabs'),
-    status: document.getElementById('loadStatus'),
-    playBtn: document.getElementById('playBtn'),
-    clearBtn: document.getElementById('clearBtn'),
-    bpm: document.getElementById('bpm'),
-    bpmOut: document.getElementById('bpmOut'),
-    copyBarBtn: document.getElementById('copyBarBtn'),
-    pasteBarBtn: document.getElementById('pasteBarBtn'),
-    chainMode: document.getElementById('chainMode'),
-    exportPdfBtn: document.getElementById('exportPdfBtn'),
-    notationPreview: document.getElementById('notationPreview')
-  };
-
-  function setStatus(msg, level) {
-    el.status.textContent = msg;
-    el.status.className = 'status' + (level ? ' ' + level : '');
-  }
-
-  function buildGrid() {
-    el.grid.innerHTML = '';
-    TRACKS.forEach(track => {
-      const lbl = document.createElement('div');
-      lbl.className = 'row-label';
-      const preview = document.createElement('button');
-      preview.type = 'button';
-      preview.className = 'preview-btn';
-      preview.textContent = '♪';
-      preview.title = 'Vorhören';
-      preview.addEventListener('click', e => {
-        e.stopPropagation();
-        ensureAudioReady();
-        (audio._kitPromise || Promise.resolve()).then(() => playSample(track.id));
-      });
-      const name = document.createElement('span');
-      name.textContent = track.label;
-      lbl.appendChild(preview);
-      lbl.appendChild(name);
-      el.grid.appendChild(lbl);
-      for (let sib = 0; sib < STEPS_PER_BAR; sib++) {
-        const cell = document.createElement('button');
-        cell.type = 'button';
-        cell.className = 'cell' + (sib % 4 === 0 ? ' beat-start' : '');
-        cell.dataset.track = track.id;
-        cell.dataset.sib = String(sib);
-        cell.addEventListener('click', () => handleCellClick(track.id, sib, cell));
-        el.grid.appendChild(cell);
-      }
-    });
-  }
-
-  function handleCellClick(trackId, sib, cellEl) {
-    const data = currentData();
-    const gStep = globalStep(state.currentBar, sib);
-    const wasOn = data[trackId][gStep];
-    const newVal = wasOn ? 0 : 1;
-    data[trackId][gStep] = newVal;
-    if (newVal) {
-      cellEl.classList.add('on');
-      ensureAudioReady();
-      (audio._kitPromise || Promise.resolve()).then(() => playSample(trackId));
-    } else {
-      cellEl.classList.remove('on');
-    }
-    renderPreviewNotation();
-  }
-
-  function refreshGrid() {
-    const data = currentData();
-    TRACKS.forEach(track => {
-      for (let sib = 0; sib < STEPS_PER_BAR; sib++) {
-        const gStep = globalStep(state.currentBar, sib);
-        const cell = el.grid.querySelector(`.cell[data-track="${track.id}"][data-sib="${sib}"]`);
-        if (!cell) continue;
-        cell.classList.toggle('on', Boolean(data[track.id][gStep]));
-      }
-    });
-  }
-
-  function barHasContent(slot, bar) {
-    const p = state.patterns[slot];
-    const off = bar * STEPS_PER_BAR;
-    for (const t of TRACKS) {
-      const row = p.data[t.id];
-      for (let s = 0; s < STEPS_PER_BAR; s++) if (row[off + s]) return true;
-    }
-    return false;
-  }
-  function slotHasContent(slot) {
-    for (let b = 0; b < state.patterns[slot].bars; b++) {
-      if (barHasContent(slot, b)) return true;
-    }
-    return false;
-  }
-
-  function makeTab(text, isActive, opts, onClick) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'mini-tab';
-    if (isActive) btn.classList.add('active');
-    if (opts && opts.hasContent) btn.classList.add('has-content');
-    if (opts && opts.playing) btn.classList.add('playing-indicator');
-    btn.textContent = text;
-    btn.addEventListener('click', onClick);
-    return btn;
-  }
-
-  function rebuildTabs() {
-    // Pattern A/B/C/D
-    el.patternTabs.innerHTML = '';
-    SLOTS.forEach(slot => {
-      const isActive = slot === state.currentSlot;
-      const tab = makeTab(slot, isActive, {
-        hasContent: slotHasContent(slot) && !isActive,
-        playing: state.playing && state.chainMode && slot === state.chainPlayingSlot
-      }, () => {
-        state.currentSlot = slot;
-        if (state.currentBar >= currentBars()) state.currentBar = 0;
-        rebuildTabs();
-        refreshGrid();
-        renderPreviewNotation();
-      });
-      el.patternTabs.appendChild(tab);
-    });
-    // Length 1-4
-    el.lengthTabs.innerHTML = '';
-    [1, 2, 3, 4].forEach(n => {
-      const tab = makeTab(String(n), currentBars() === n, null, () => changeLength(n));
-      el.lengthTabs.appendChild(tab);
-    });
-    // Bar tabs
-    el.barTabs.innerHTML = '';
-    for (let b = 0; b < currentBars(); b++) {
-      const isActive = b === state.currentBar;
-      const tab = makeTab(String(b + 1), isActive, {
-        hasContent: barHasContent(state.currentSlot, b) && !isActive
-      }, () => {
-        state.currentBar = b;
-        rebuildTabs();
-        refreshGrid();
-      });
-      el.barTabs.appendChild(tab);
-    }
-    // Kit tabs
-    el.kitTabs.innerHTML = '';
-    Object.keys(KITS).forEach(kitId => {
-      const isActive = kitId === state.currentKit;
-      const tab = makeTab(KITS[kitId].label, isActive, null, () => {
-        if (state.currentKit === kitId) return;
-        state.currentKit = kitId;
-        rebuildTabs();
-        loadKit(kitId);
-      });
-      el.kitTabs.appendChild(tab);
-    });
-  }
-
-  function changeLength(newBars) {
-    const oldBars = currentBars();
-    if (newBars === oldBars) return;
-    const oldData = currentData();
-    const newData = emptyPattern(newBars);
-    const copyLen = Math.min(oldBars, newBars) * STEPS_PER_BAR;
-    Object.keys(oldData).forEach(k => {
-      for (let i = 0; i < copyLen; i++) newData[k][i] = oldData[k][i];
-    });
-    state.patterns[state.currentSlot].bars = newBars;
-    state.patterns[state.currentSlot].data = newData;
-    if (state.currentBar >= newBars) state.currentBar = newBars - 1;
-    rebuildTabs();
-    refreshGrid();
-    renderPreviewNotation();
-  }
-
-  el.copyBarBtn.addEventListener('click', () => {
-    const d = currentData();
-    const off = state.currentBar * STEPS_PER_BAR;
-    const clip = {};
-    Object.keys(d).forEach(k => {
-      clip[k] = d[k].slice(off, off + STEPS_PER_BAR);
-    });
-    state.barClipboard = clip;
-    el.pasteBarBtn.disabled = false;
-    setStatus(`Takt ${state.currentBar + 1} von Pattern ${state.currentSlot} kopiert.`, 'success');
-  });
-
-  el.pasteBarBtn.addEventListener('click', () => {
-    if (!state.barClipboard) return;
-    const d = currentData();
-    const off = state.currentBar * STEPS_PER_BAR;
-    Object.keys(state.barClipboard).forEach(k => {
-      if (!d[k]) return;
-      for (let i = 0; i < STEPS_PER_BAR; i++) d[k][off + i] = state.barClipboard[k][i];
-    });
-    setStatus(`Eingefügt in Takt ${state.currentBar + 1} von Pattern ${state.currentSlot}.`, 'success');
-    refreshGrid();
-    rebuildTabs();
-    renderPreviewNotation();
-  });
-
-  el.clearBtn.addEventListener('click', () => {
-    const d = currentData();
-    const off = state.currentBar * STEPS_PER_BAR;
-    Object.keys(d).forEach(k => {
-      for (let i = 0; i < STEPS_PER_BAR; i++) d[k][off + i] = 0;
-    });
-    refreshGrid();
-    rebuildTabs();
-    renderPreviewNotation();
-  });
-
-  el.bpm.addEventListener('input', e => { el.bpmOut.textContent = e.target.value; });
-  el.chainMode.addEventListener('change', e => { state.chainMode = e.target.checked; });
-
-  // ============================================================
-  // PLAYBACK
-  // ============================================================
-  let schedulerInterval = null;
-  let nextStepTime = 0;
-
-  function scheduler() {
-    const now = audio.ctx.currentTime;
-    while (nextStepTime < now + 0.1) {
-      const slotPlaying = state.chainMode ? state.chainPlayingSlot : state.currentSlot;
-      const p = state.patterns[slotPlaying];
-      const totalSteps = p.bars * STEPS_PER_BAR;
-      state.currentStep = (state.currentStep + 1) % totalSteps;
-      const d = p.data;
-      TRACKS.forEach(t => {
-        if (d[t.id][state.currentStep]) playSample(t.id, nextStepTime, 1.0);
-      });
-      const drawAt = nextStepTime;
-      const playingSlot = slotPlaying;
-      const playingBar = Math.floor(state.currentStep / STEPS_PER_BAR);
-      const playingSib = state.currentStep % STEPS_PER_BAR;
-      setTimeout(() => {
-        el.grid.querySelectorAll('.cell.playing').forEach(c => c.classList.remove('playing'));
-        if (playingSlot === state.currentSlot && playingBar === state.currentBar) {
-          el.grid.querySelectorAll(`.cell[data-sib="${playingSib}"]`)
-            .forEach(c => c.classList.add('playing'));
-        }
-      }, Math.max(0, (drawAt - audio.ctx.currentTime) * 1000));
-      const bpm = Number(el.bpm.value);
-      const sixteenthSec = 60 / bpm / 4;
-      nextStepTime += sixteenthSec;
-      if (state.chainMode && state.currentStep === totalSteps - 1) {
-        const i = SLOTS.indexOf(state.chainPlayingSlot);
-        state.chainPlayingSlot = SLOTS[(i + 1) % SLOTS.length];
-        state.currentStep = -1;
-        setTimeout(rebuildTabs, 0);
-      }
-    }
-  }
-
-  function togglePlay() {
-    if (state.playing) {
-      state.playing = false;
-      if (schedulerInterval) { clearInterval(schedulerInterval); schedulerInterval = null; }
-      state.currentStep = -1;
-      el.playBtn.innerHTML = '▶ PLAY';
-      el.grid.querySelectorAll('.cell.playing').forEach(c => c.classList.remove('playing'));
-      rebuildTabs();
-      return;
-    }
-    ensureAudioReady();
-    (audio._kitPromise || Promise.resolve()).then(() => {
-      nextStepTime = audio.ctx.currentTime + 0.05;
-      state.currentStep = -1;
-      state.chainPlayingSlot = state.currentSlot;
-      state.playing = true;
-      el.playBtn.innerHTML = '■ STOP';
-      schedulerInterval = setInterval(scheduler, 25);
-      rebuildTabs();
-    });
-  }
-  el.playBtn.addEventListener('click', togglePlay);
-
-  // ============================================================
-  // VEXFLOW NOTATION
-  // ============================================================
-  const VF_MAP = {
-    cr: { key: 'a/5/x2', voice: 'up' },
-    ri: { key: 'f/5/x2', voice: 'up' },
-    hh: { key: 'g/5/x2', voice: 'up' },
-    oh: { key: 'g/5/x2', voice: 'up', open: true },
-    ph: { key: 'd/4/x2', voice: 'down' },
-    th: { key: 'e/5',   voice: 'up' },
-    tm: { key: 'd/5',   voice: 'up' },
-    tl: { key: 'a/4',   voice: 'down' },
-    rs: { key: 'c/5/x2', voice: 'up' },
-    sn: { key: 'c/5',   voice: 'up' },
-    kd: { key: 'f/4',   voice: 'down' }
-  };
-
-  function renderPatternVex(container, pattern, opts) {
-    opts = opts || {};
-    if (typeof Vex === 'undefined') {
-      container.innerHTML = '<div style="color:#888; font-size:12px;">Notations-Library wird geladen…</div>';
-      return;
-    }
-    const VF = Vex.Flow;
-    container.innerHTML = '';
-
-    const bars = pattern.bars;
-    const barWidth = opts.barWidth || 480;
-    const leftPad = 70;
-    const rightPad = 20;
-    const width = leftPad + bars * barWidth + rightPad;
-    const height = opts.height || 220;
-
-    const div = document.createElement('div');
-    container.appendChild(div);
-
-    const renderer = new VF.Renderer(div, VF.Renderer.Backends.SVG);
-    renderer.resize(width, height);
-    const ctx = renderer.getContext();
-    ctx.setFont('Arial', 10);
-
-    const staveTop = opts.label ? 60 : 40;
-
-    for (let barIdx = 0; barIdx < bars; barIdx++) {
-      const x = (barIdx === 0) ? 10 : leftPad + barIdx * barWidth - 10;
-      const w = (barIdx === 0) ? leftPad + barWidth - 20 : barWidth;
-      const stave = new VF.Stave(x, staveTop, w);
-      if (barIdx === 0) {
-        stave.addClef('percussion').addTimeSignature('4/4');
-      }
-      if (barIdx === bars - 1) {
-        stave.setEndBarType(VF.Barline.type.END);
-      }
-      stave.setContext(ctx).draw();
-
-      ctx.save();
-      ctx.setFont('Arial', 9);
-      ctx.fillText('Takt ' + (barIdx + 1), x + 4, staveTop - 6);
-      ctx.restore();
-
-      const barOffset = barIdx * STEPS_PER_BAR;
-      const upperNotes = [];
-      const lowerNotes = [];
-      const upperRestFlags = [];
-      const lowerRestFlags = [];
-
-      for (let sib = 0; sib < STEPS_PER_BAR; sib++) {
-        const gStep = barOffset + sib;
-        const upperKeys = [];
-        const lowerKeys = [];
-        let upperHasOpen = false;
-
-        TRACKS.forEach(t => {
-          if (!pattern.data[t.id][gStep]) return;
-          const m = VF_MAP[t.id];
-          if (!m) return;
-          if (m.voice === 'up') {
-            upperKeys.push(m.key);
-            if (m.open) upperHasOpen = true;
-          } else {
-            lowerKeys.push(m.key);
-          }
-        });
-
-        if (upperKeys.length === 0) {
-          upperNotes.push(new VF.StaveNote({ keys: ['b/4'], duration: '16r' }));
-          upperRestFlags.push(true);
-        } else {
-          const note = new VF.StaveNote({
-            keys: upperKeys, duration: '16', stem_direction: VF.Stem.UP
-          });
-          if (upperHasOpen) {
-            try {
-              note.addModifier(new VF.Articulation('a@a').setPosition(VF.Modifier.Position.ABOVE), 0);
-            } catch(e) {}
-          }
-          upperNotes.push(note);
-          upperRestFlags.push(false);
-        }
-
-        if (lowerKeys.length === 0) {
-          lowerNotes.push(new VF.StaveNote({ keys: ['d/4'], duration: '16r' }));
-          lowerRestFlags.push(true);
-        } else {
-          lowerNotes.push(new VF.StaveNote({
-            keys: lowerKeys, duration: '16', stem_direction: VF.Stem.DOWN
-          }));
-          lowerRestFlags.push(false);
-        }
-      }
-
-      const upperBeams = [];
-      const lowerBeams = [];
-      for (let g = 0; g < 4; g++) {
-        const startIdx = g * 4;
-        const ugroup = upperNotes.slice(startIdx, startIdx + 4).filter(n => !n.isRest());
-        if (ugroup.length >= 2) upperBeams.push(new VF.Beam(ugroup));
-        const lgroup = lowerNotes.slice(startIdx, startIdx + 4).filter(n => !n.isRest());
-        if (lgroup.length >= 2) lowerBeams.push(new VF.Beam(lgroup));
-      }
-
-      const voice1 = new VF.Voice({ num_beats: 4, beat_value: 4 }).setStrict(false).addTickables(upperNotes);
-      const voice2 = new VF.Voice({ num_beats: 4, beat_value: 4 }).setStrict(false).addTickables(lowerNotes);
-
-      const formatter = new VF.Formatter();
-      formatter.joinVoices([voice1, voice2]).format([voice1, voice2], w - 50);
-
-      // Pausen unsichtbar machen
-      upperNotes.forEach((note, i) => {
-        if (upperRestFlags[i]) {
-          note.setStyle({ fillStyle: 'rgba(0,0,0,0)', strokeStyle: 'rgba(0,0,0,0)' });
-        }
-      });
-      lowerNotes.forEach((note, i) => {
-        if (lowerRestFlags[i]) {
-          note.setStyle({ fillStyle: 'rgba(0,0,0,0)', strokeStyle: 'rgba(0,0,0,0)' });
-        }
-      });
-
-      voice1.draw(ctx, stave);
-      voice2.draw(ctx, stave);
-      upperBeams.forEach(b => b.setContext(ctx).draw());
-      lowerBeams.forEach(b => b.setContext(ctx).draw());
-    }
-
-    if (opts.label) {
-      ctx.save();
-      ctx.setFont('Arial', 12, 'bold');
-      ctx.fillText(opts.label, 10, 22);
-      ctx.restore();
-    }
-  }
-
-  function renderPreviewNotation() {
-    if (!el.notationPreview) return;
-    renderPatternVex(el.notationPreview, state.patterns[state.currentSlot], {
-      label: `Pattern ${state.currentSlot} · ${state.patterns[state.currentSlot].bars} ${state.patterns[state.currentSlot].bars === 1 ? 'Takt' : 'Takte'}`,
-      barWidth: 460,
-      height: 200
-    });
-  }
-
-  // ============================================================
-  // PDF-EXPORT
-  // ============================================================
-  function getJsPDF() {
-    if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
-    if (window.jsPDF) return window.jsPDF;
-    return null;
-  }
-  function getSvg2Pdf() {
-    if (window.svg2pdf && window.svg2pdf.svg2pdf) return window.svg2pdf.svg2pdf;
-    if (window.svg2pdf) return window.svg2pdf;
-    return null;
-  }
-
-  async function exportPDF() {
-    if (typeof Vex === 'undefined') {
-      setStatus('Notations-Library noch nicht geladen.', 'error');
-      return;
-    }
-    const jsPDFCtor = getJsPDF();
-    const svg2pdfFn = getSvg2Pdf();
-    if (!jsPDFCtor || !svg2pdfFn) {
-      setStatus('PDF-Libraries noch nicht geladen. Bitte Seite neu laden.', 'error');
-      return;
-    }
-    setStatus('Erstelle Notenblatt…');
-
-    const slotsToExport = SLOTS.filter(slot => slotHasContent(slot));
-    if (slotsToExport.length === 0) {
-      setStatus('Keine Patterns mit Inhalt vorhanden.', 'error');
-      return;
-    }
-
-    const pdf = new jsPDFCtor({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageW = 210, pageH = 297, margin = 15;
-
-    pdf.setFontSize(18);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('toenchen Trackofaktor', margin, margin + 6);
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(100);
-    const date = new Date().toLocaleDateString('de-DE');
-    const bpmVal = el.bpm.value;
-    const kitLabel = KITS[state.currentKit].label;
-    pdf.text(`Notenblatt · ${date} · ${bpmVal} BPM · Kit: ${kitLabel}`, margin, margin + 12);
-    pdf.setTextColor(0);
-
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'italic');
-    pdf.text('Perkussions-Schlüssel, 4/4. x-Köpfe = Becken/HiHat/Rim-Click, ovale Köpfe = Trommeln.', margin, margin + 18);
-    pdf.setFont('helvetica', 'normal');
-
-    let yPos = margin + 26;
-
-    for (let idx = 0; idx < slotsToExport.length; idx++) {
-      const slot = slotsToExport[idx];
-      const pattern = state.patterns[slot];
-
-      pdf.setFontSize(13);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`Pattern ${slot}  (${pattern.bars} ${pattern.bars === 1 ? 'Takt' : 'Takte'})`, margin, yPos);
-      yPos += 4;
-      pdf.setFont('helvetica', 'normal');
-
-      const tempDiv = document.createElement('div');
-      tempDiv.style.position = 'absolute';
-      tempDiv.style.left = '-9999px';
-      tempDiv.style.top = '0';
-      document.body.appendChild(tempDiv);
-
-      renderPatternVex(tempDiv, pattern, { barWidth: 460, height: 180 });
-
-      const svg = tempDiv.querySelector('svg');
-      if (svg) {
-        const svgW = parseFloat(svg.getAttribute('width'));
-        const svgH = parseFloat(svg.getAttribute('height'));
-        const availableW = pageW - 2 * margin;
-        const scale = Math.min(availableW / svgW, 1);
-        const pdfW = svgW * scale;
-        const pdfH = svgH * scale;
-
-        if (yPos + pdfH > pageH - margin) {
-          pdf.addPage();
-          yPos = margin;
-          pdf.setFontSize(13);
-          pdf.setFont('helvetica', 'bold');
-          pdf.text(`Pattern ${slot}  (${pattern.bars} ${pattern.bars === 1 ? 'Takt' : 'Takte'})`, margin, yPos);
-          yPos += 4;
-          pdf.setFont('helvetica', 'normal');
-        }
-
-        try {
-          await svg2pdfFn(svg, pdf, { x: margin, y: yPos, width: pdfW, height: pdfH });
-        } catch(err) {
-          console.error('svg2pdf fail', err);
-        }
-        yPos += pdfH + 8;
-      }
-      document.body.removeChild(tempDiv);
-    }
-
-    if (yPos > pageH - 40) { pdf.addPage(); yPos = margin; }
-    else { yPos += 4; }
-    pdf.setDrawColor(200);
-    pdf.line(margin, yPos, pageW - margin, yPos);
-    yPos += 5;
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Legende:', margin, yPos);
-    yPos += 5;
-    pdf.setFont('helvetica', 'normal');
-    [
-      'Crash / Ride / Hi-Hat: x-Notenkopf über dem System',
-      'Open Hi-Hat: x-Notenkopf mit kleinem Kreis "o" darüber',
-      'Pedal Hi-Hat: x-Notenkopf unter dem System',
-      'Rim-Click: x-Notenkopf auf der Snare-Position',
-      'Toms: ovale Notenköpfe',
-      'Snare: ovaler Notenkopf im mittleren Zwischenraum',
-      'Kick: ovaler Notenkopf unter dem System, Hals nach unten'
-    ].forEach(l => { pdf.text('• ' + l, margin, yPos); yPos += 4.5; });
-
-    pdf.save(`trackofaktor-${date.replace(/\./g, '-')}.pdf`);
-    setStatus('Notenblatt als PDF gespeichert.', 'success');
-  }
-
-  el.exportPdfBtn.addEventListener('click', exportPDF);
-
-  // ============================================================
-  // INIT
-  // ============================================================
-  buildGrid();
-  refreshGrid();
-  rebuildTabs();
-
-  function tryInitialRender(attempts) {
-    if (typeof Vex !== 'undefined') {
-      renderPreviewNotation();
-    } else if (attempts < 40) {
-      setTimeout(() => tryInitialRender(attempts + 1), 100);
-    }
-  }
-  tryInitialRender(0);
-})();
+  .cell { height: 24px; }
+  .row-label { font-size: 8px; padding: 0 4px; }
+}
+
+@media (max-width: 950px) and (orientation: landscape) and (max-height: 500px) {
+  body { padding: 0.25rem; }
+  .app { padding: 0.5rem; border-radius: 8px; }
+  .app::before, .app::after { display: none; }
+  .app-header { padding-bottom: 0.4rem; margin-bottom: 0.5rem; gap: 0.5rem; }
+  .brand { font-size: 16px; }
+  .subtitle { display: none; }
+  .hw-panel { padding: 5px 7px; margin-bottom: 0.4rem; gap: 6px; }
+  .bpm-control input { width: 80px; }
+  .chain-toggle { font-size: 9px; }
+  #grid, #beatLabels { grid-template-columns: 80px repeat(16, 1fr); }
+  .cell { height: 26px; }
+  .row-label { font-size: 9px; padding: 0 4px; height: 26px; }
+  .preview-section { margin-top: 0.6rem; padding: 0.5rem 0.7rem; }
+  .notation-preview { min-height: 140px; }
+  .info-section { display: none; }
+  .app-footer { display: none; }
+}

@@ -1,6 +1,5 @@
 /**
- * toenchen Trackofaktor
- * Drum Sequencer mit Notenblatt-Export
+ * DR-25840 / toenchen Trackofaktor — Drum Sequencer mit Multi-Kit-Support
  */
 
 (function () {
@@ -8,20 +7,75 @@
 
   const STEPS_PER_BAR = 16;
   const SLOTS = ['A', 'B', 'C', 'D'];
-  const SAMPLE_BASE = 'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/';
+
+  // ============================================================
+  // DRUM KITS — drei verschiedene Soundsets von Oramics
+  // ============================================================
+  const KITS = {
+    acoustic: {
+      label: 'Acoustic',
+      base: 'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/',
+      files: {
+        cr: 'crash-01.wav',
+        ri: 'ride-01.wav',
+        oh: 'hihat-open.wav',
+        hh: 'hihat-closed.wav',
+        ph: 'hihat-closed.wav',
+        th: 'tom-01.wav',
+        tm: 'tom-02.wav',
+        tl: 'tom-03.wav',
+        sn: 'snare-01.wav',
+        kd: 'kick-01.wav'
+      }
+    },
+    tr808: {
+      label: 'TR-808',
+      base: 'https://oramics.github.io/sampled/DM/TR-808/samples/',
+      files: {
+        cr: 'cymbal.wav',
+        ri: 'cymbal.wav',
+        oh: 'hihat-open.wav',
+        hh: 'hihat-closed.wav',
+        ph: 'hihat-closed.wav',
+        th: 'tom-h.wav',
+        tm: 'tom-m.wav',
+        tl: 'tom-l.wav',
+        sn: 'snare.wav',
+        kd: 'kick.wav'
+      }
+    },
+    linndrum: {
+      label: 'LinnDrum',
+      base: 'https://oramics.github.io/sampled/DM/LM-2/samples/',
+      files: {
+        cr: 'crash.wav',
+        ri: 'ride.wav',
+        oh: 'hihat-open.wav',
+        hh: 'hihat-closed.wav',
+        ph: 'hihat-closed.wav',
+        th: 'tom-h.wav',
+        tm: 'tom-m.wav',
+        tl: 'tom-l.wav',
+        sn: 'snare-m.wav',
+        kd: 'kick.wav'
+      }
+    }
+  };
+
+  const RIM_CLICK_SAMPLE = 'rimshot.wav';
 
   const TRACKS = [
-    { id: 'cr', label: 'Crash',      group: 'cymbal', sample: 'crash-01.wav', source: 'remote' },
-    { id: 'ri', label: 'Ride',       group: 'cymbal', sample: 'ride-01.wav',  source: 'remote' },
-    { id: 'oh', label: 'Open HH',    group: 'hihat',  sample: 'hihat-open.wav',   source: 'remote' },
-    { id: 'hh', label: 'Closed HH',  group: 'hihat',  sample: 'hihat-closed.wav', source: 'remote' },
-    { id: 'ph', label: 'Pedal HH',   group: 'hihat',  sample: 'hihat-closed.wav', source: 'remote' },
-    { id: 'th', label: 'Tom hi',     group: 'tom',    sample: 'tom-01.wav', source: 'remote' },
-    { id: 'tm', label: 'Tom mid',    group: 'tom',    sample: 'tom-02.wav', source: 'remote' },
-    { id: 'tl', label: 'Tom lo',     group: 'tom',    sample: 'tom-03.wav', source: 'remote' },
-    { id: 'rs', label: 'Rim-Click',  group: 'drum',   sample: 'rimshot.wav', source: 'local' },
-    { id: 'sn', label: 'Snare',      group: 'drum',   sample: 'snare-01.wav', source: 'remote' },
-    { id: 'kd', label: 'Kick',       group: 'drum',   sample: 'kick-01.wav',  source: 'remote' }
+    { id: 'cr', label: 'Crash',      group: 'cymbal' },
+    { id: 'ri', label: 'Ride',       group: 'cymbal' },
+    { id: 'oh', label: 'Open HH',    group: 'hihat'  },
+    { id: 'hh', label: 'Closed HH',  group: 'hihat'  },
+    { id: 'ph', label: 'Pedal HH',   group: 'hihat'  },
+    { id: 'th', label: 'Tom hi',     group: 'tom'    },
+    { id: 'tm', label: 'Tom mid',    group: 'tom'    },
+    { id: 'tl', label: 'Tom lo',     group: 'tom'    },
+    { id: 'rs', label: 'Rim-Click',  group: 'drum'   },
+    { id: 'sn', label: 'Snare',      group: 'drum'   },
+    { id: 'kd', label: 'Kick',       group: 'drum'   }
   ];
 
   const DRUM_GAIN = {
@@ -40,24 +94,14 @@
   const DEFAULT_PATTERN_A = {
     bars: 1,
     data: {
-      cr: steps(),
-      ri: steps(),
-      oh: steps(),
+      cr: steps(), ri: steps(), oh: steps(),
       hh: steps(1, 3, 5, 7, 9, 11, 13, 15),
-      ph: steps(),
-      th: steps(),
-      tm: steps(),
-      tl: steps(),
+      ph: steps(), th: steps(), tm: steps(), tl: steps(),
       rs: steps(),
       sn: steps(5, 13),
       kd: steps(1, 9)
     }
   };
-
-  function applyStep(data, trackId, globalStep, value) {
-    data[trackId][globalStep] = value;
-    return [];
-  }
 
   function emptyRow(len) { return new Array(len).fill(0); }
   function emptyPattern(bars) {
@@ -75,7 +119,8 @@
     currentStep: -1,
     chainMode: false,
     chainPlayingSlot: 'A',
-    barClipboard: null
+    barClipboard: null,
+    currentKit: 'acoustic'
   };
 
   SLOTS.forEach(slot => {
@@ -99,9 +144,12 @@
   const currentBars = () => currentSlot().bars;
   const globalStep  = (bar, sib) => bar * STEPS_PER_BAR + sib;
 
+  // ============================================================
+  // AUDIO
+  // ============================================================
   const audio = {
     ctx: null, masterGain: null, buffers: {},
-    usingSamples: false, loading: false, loadPromise: null
+    loadingKit: null, loadedKit: null
   };
 
   function ensureCtx() {
@@ -122,135 +170,59 @@
       .then(buf => new Promise((res, rej) => audio.ctx.decodeAudioData(buf, res, rej)));
   }
 
-  function sampleUrl(track) {
-    if (track.source === 'local') return track.sample;
-    return SAMPLE_BASE + track.sample;
-  }
-
-  function loadAllSamples() {
-    if (audio.loadPromise) return audio.loadPromise;
-    ensureCtx();
-    audio.loading = true;
-    setStatus('Lade Drum-Samples…');
-
-    const uniqueUrls = {};
-    TRACKS.forEach(t => {
-      const url = sampleUrl(t);
-      if (!uniqueUrls[url]) uniqueUrls[url] = [];
-      uniqueUrls[url].push(t.id);
-    });
-
-    audio.loadPromise = Promise.all(Object.keys(uniqueUrls).map(url =>
-      loadSampleBuffer(url)
-        .then(buf => {
-          uniqueUrls[url].forEach(id => { audio.buffers[id] = buf; });
-        })
-        .catch(err => { console.warn('Sample fail', url, err); })
-    )).then(() => {
-      const loaded = Object.keys(audio.buffers).length;
-      if (loaded >= 7) {
-        audio.usingSamples = true;
-        setStatus(`Drum-Kit geladen (${loaded}/${TRACKS.length} Samples).`, 'success');
-      } else {
-        buildSynthBuffers();
-        setStatus('Samples nicht erreichbar — nutze Synth-Fallback.', 'error');
-      }
-      audio.loading = false;
-    }).catch(() => {
-      buildSynthBuffers();
-      setStatus('Samples nicht erreichbar — nutze Synth-Fallback.', 'error');
-      audio.loading = false;
-    });
-
-    return audio.loadPromise;
-  }
-
-  function makeBuffer(seconds, fillFn) {
-    const sr = audio.ctx.sampleRate;
-    const len = Math.floor(sr * seconds);
-    const buf = audio.ctx.createBuffer(1, len, sr);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = fillFn(i / sr, i, sr);
-    return buf;
-  }
-  function highpassInPlace(data, cutoff, sr) {
-    const rc = 1 / (2 * Math.PI * cutoff);
-    const dt = 1 / sr;
-    const alpha = rc / (rc + dt);
-    let prev = data[0], outPrev = data[0];
-    for (let i = 1; i < data.length; i++) {
-      const out = alpha * (outPrev + data[i] - prev);
-      prev = data[i]; outPrev = out;
-      data[i] = out;
+  function loadKit(kitId) {
+    if (audio.loadingKit === kitId || audio.loadedKit === kitId) {
+      return audio.loadingKit ? audio._kitPromise : Promise.resolve();
     }
-  }
-  function buildSynthBuffers() {
-    audio.buffers.kd = makeBuffer(0.5, t => {
-      const phase = 2*Math.PI*(45*t + (105/35)*(1 - Math.exp(-t*35)));
-      const body  = Math.sin(phase) * Math.exp(-t*4.5);
-      const click = (Math.random()*2-1) * Math.exp(-t*500) * 0.5;
-      return (body + click) * 0.95;
+    ensureCtx();
+    const kit = KITS[kitId];
+    if (!kit) return Promise.resolve();
+    audio.loadingKit = kitId;
+    audio.buffers = {};
+    setStatus(`Lade Kit: ${kit.label}…`);
+
+    const urlMap = {};
+    Object.keys(kit.files).forEach(trackId => {
+      const url = kit.base + kit.files[trackId];
+      if (!urlMap[url]) urlMap[url] = [];
+      urlMap[url].push(trackId);
     });
-    const sn = makeBuffer(0.3, t => {
-      const noise = (Math.random()*2-1) * Math.exp(-t*22);
-      const tone  = Math.sin(2*Math.PI*200*t) * Math.exp(-t*30) * 0.4;
-      const tone2 = Math.sin(2*Math.PI*330*t) * Math.exp(-t*35) * 0.3;
-      return (noise*0.8 + tone + tone2) * 0.85;
+
+    const promises = Object.keys(urlMap).map(url =>
+      loadSampleBuffer(url)
+        .then(buf => { urlMap[url].forEach(id => { audio.buffers[id] = buf; }); })
+        .catch(err => { console.warn('Sample fail', url, err); })
+    );
+    promises.push(
+      loadSampleBuffer(RIM_CLICK_SAMPLE)
+        .then(buf => { audio.buffers.rs = buf; })
+        .catch(err => {
+          console.warn('Rim-Click fail, fallback to snare', err);
+          if (audio.buffers.sn) audio.buffers.rs = audio.buffers.sn;
+        })
+    );
+
+    audio._kitPromise = Promise.all(promises).then(() => {
+      const loaded = Object.keys(audio.buffers).length;
+      if (loaded >= 6) {
+        setStatus(`Kit "${kit.label}" geladen (${loaded}/${TRACKS.length} Samples).`, 'success');
+      } else {
+        setStatus(`Kit "${kit.label}" unvollständig (${loaded} Samples).`, 'error');
+      }
+      audio.loadedKit = kitId;
+      audio.loadingKit = null;
+    }).catch(err => {
+      setStatus(`Kit-Ladefehler: ${err.message}`, 'error');
+      audio.loadingKit = null;
     });
-    highpassInPlace(sn.getChannelData(0), 180, audio.ctx.sampleRate);
-    audio.buffers.sn = sn;
-    audio.buffers.rs = sn;
-    const mkHat = (mode) => {
-      let dur, decay, bright;
-      if (mode==='closed') { dur=0.08; decay=35; bright=1; }
-      else if (mode==='open') { dur=0.4; decay=8; bright=1; }
-      else { dur=0.12; decay=20; bright=0.7; }
-      const b = makeBuffer(dur, t => {
-        const fs=[8000,10500,13000,7200,9400]; let s=0;
-        for (const f of fs) s += Math.sin(2*Math.PI*f*t)>0?1:-1;
-        s /= fs.length;
-        const n = Math.random()*2-1;
-        return (s*0.3+n*0.7)*Math.exp(-t*decay)*0.45*bright;
-      });
-      highpassInPlace(b.getChannelData(0), mode==='pedal'?4500:6000, audio.ctx.sampleRate);
-      return b;
-    };
-    audio.buffers.hh = mkHat('closed');
-    audio.buffers.oh = mkHat('open');
-    audio.buffers.ph = mkHat('pedal');
-    const mkTom = (pitch) => makeBuffer(0.45, t => {
-      const f = pitch*(1 + 0.5*Math.exp(-t*20));
-      const body = Math.sin(2*Math.PI*f*t) * Math.exp(-t*6);
-      const noise = (Math.random()*2-1) * Math.exp(-t*80) * 0.15;
-      return (body + noise) * 0.9;
-    });
-    audio.buffers.th = mkTom(220);
-    audio.buffers.tm = mkTom(160);
-    audio.buffers.tl = mkTom(110);
-    const mkCym = (isRide) => {
-      const dur = isRide?1.2:1.6, decay = isRide?3:1.8;
-      const b = makeBuffer(dur, t => {
-        const fs=[3200,4100,5800,7200,9100,11000,13500]; let s=0;
-        for (let k=0; k<fs.length; k++) {
-          const fr = fs[k]*(1 + 0.002*Math.sin(t*7.3*(k+1)));
-          s += Math.sin(2*Math.PI*fr*t)>0?1:-1;
-        }
-        s /= fs.length;
-        const n = Math.random()*2-1;
-        const mix = isRide ? (s*0.6+n*0.4) : (s*0.4+n*0.6);
-        return mix * Math.exp(-t*decay) * 0.4;
-      });
-      highpassInPlace(b.getChannelData(0), isRide?2500:2000, audio.ctx.sampleRate);
-      return b;
-    };
-    audio.buffers.ri = mkCym(true);
-    audio.buffers.cr = mkCym(false);
+
+    return audio._kitPromise;
   }
 
   function ensureAudioReady() {
     ensureCtx();
-    if (Object.keys(audio.buffers).length === 0 && !audio.loading) {
-      loadAllSamples();
+    if (audio.loadedKit !== state.currentKit && audio.loadingKit !== state.currentKit) {
+      loadKit(state.currentKit);
     }
   }
 
@@ -283,11 +255,15 @@
     src.start(when || audio.ctx.currentTime);
   }
 
+  // ============================================================
+  // UI
+  // ============================================================
   const el = {
     grid: document.getElementById('grid'),
     patternTabs: document.getElementById('patternTabs'),
     lengthTabs: document.getElementById('lengthTabs'),
     barTabs: document.getElementById('barTabs'),
+    kitTabs: document.getElementById('kitTabs'),
     status: document.getElementById('loadStatus'),
     playBtn: document.getElementById('playBtn'),
     clearBtn: document.getElementById('clearBtn'),
@@ -318,7 +294,7 @@
       preview.addEventListener('click', e => {
         e.stopPropagation();
         ensureAudioReady();
-        (audio.loadPromise || Promise.resolve()).then(() => playSample(track.id));
+        (audio._kitPromise || Promise.resolve()).then(() => playSample(track.id));
       });
       const name = document.createElement('span');
       name.textContent = track.label;
@@ -342,11 +318,11 @@
     const gStep = globalStep(state.currentBar, sib);
     const wasOn = data[trackId][gStep];
     const newVal = wasOn ? 0 : 1;
-    applyStep(data, trackId, gStep, newVal);
+    data[trackId][gStep] = newVal;
     if (newVal) {
       cellEl.classList.add('on');
       ensureAudioReady();
-      (audio.loadPromise || Promise.resolve()).then(() => playSample(trackId));
+      (audio._kitPromise || Promise.resolve()).then(() => playSample(trackId));
     } else {
       cellEl.classList.remove('on');
     }
@@ -426,6 +402,17 @@
       });
       el.barTabs.appendChild(tab);
     }
+    el.kitTabs.innerHTML = '';
+    Object.keys(KITS).forEach(kitId => {
+      const isActive = kitId === state.currentKit;
+      const tab = makeTab(KITS[kitId].label, isActive, null, () => {
+        if (state.currentKit === kitId) return;
+        state.currentKit = kitId;
+        rebuildTabs();
+        loadKit(kitId);
+      });
+      el.kitTabs.appendChild(tab);
+    });
   }
 
   function changeLength(newBars) {
@@ -454,7 +441,7 @@
     });
     state.barClipboard = clip;
     el.pasteBarBtn.disabled = false;
-    setStatus(`Takt ${state.currentBar + 1} von Pattern ${state.currentSlot} in Zwischenablage kopiert.`, 'success');
+    setStatus(`Takt ${state.currentBar + 1} von Pattern ${state.currentSlot} kopiert.`, 'success');
   });
 
   el.pasteBarBtn.addEventListener('click', () => {
@@ -465,7 +452,7 @@
       if (!d[k]) return;
       for (let i = 0; i < STEPS_PER_BAR; i++) d[k][off + i] = state.barClipboard[k][i];
     });
-    setStatus(`Zwischenablage eingefügt in Takt ${state.currentBar + 1} von Pattern ${state.currentSlot}.`, 'success');
+    setStatus(`Eingefügt in Takt ${state.currentBar + 1} von Pattern ${state.currentSlot}.`, 'success');
     refreshGrid();
     rebuildTabs();
     renderPreviewNotation();
@@ -485,6 +472,9 @@
   el.bpm.addEventListener('input', e => { el.bpmOut.textContent = e.target.value; });
   el.chainMode.addEventListener('change', e => { state.chainMode = e.target.checked; });
 
+  // ============================================================
+  // PLAYBACK
+  // ============================================================
   let schedulerInterval = null;
   let nextStepTime = 0;
 
@@ -527,25 +517,27 @@
       state.playing = false;
       if (schedulerInterval) { clearInterval(schedulerInterval); schedulerInterval = null; }
       state.currentStep = -1;
-      el.playBtn.textContent = 'Play';
+      el.playBtn.innerHTML = '▶ PLAY';
       el.grid.querySelectorAll('.cell.playing').forEach(c => c.classList.remove('playing'));
       rebuildTabs();
       return;
     }
     ensureAudioReady();
-    (audio.loadPromise || Promise.resolve()).then(() => {
+    (audio._kitPromise || Promise.resolve()).then(() => {
       nextStepTime = audio.ctx.currentTime + 0.05;
       state.currentStep = -1;
       state.chainPlayingSlot = state.currentSlot;
       state.playing = true;
-      el.playBtn.textContent = 'Stop';
+      el.playBtn.innerHTML = '■ STOP';
       schedulerInterval = setInterval(scheduler, 25);
       rebuildTabs();
     });
   }
   el.playBtn.addEventListener('click', togglePlay);
 
-  // VexFlow Notation
+  // ============================================================
+  // VEXFLOW NOTATION
+  // ============================================================
   const VF_MAP = {
     cr: { key: 'a/5/x2', voice: 'up' },
     ri: { key: 'f/5/x2', voice: 'up' },
@@ -563,7 +555,7 @@
   function renderPatternVex(container, pattern, opts) {
     opts = opts || {};
     if (typeof Vex === 'undefined') {
-      container.innerHTML = '<div style="color:var(--text-faint); font-size:12px;">Notations-Library wird geladen…</div>';
+      container.innerHTML = '<div style="color:#888; font-size:12px;">Notations-Library wird geladen…</div>';
       return;
     }
     const VF = Vex.Flow;
@@ -606,7 +598,6 @@
       const barOffset = barIdx * STEPS_PER_BAR;
       const upperNotes = [];
       const lowerNotes = [];
-      // Trackt welche Notes Pausen sind, damit wir sie nachher unsichtbar machen
       const upperRestFlags = [];
       const lowerRestFlags = [];
 
@@ -633,9 +624,7 @@
           upperRestFlags.push(true);
         } else {
           const note = new VF.StaveNote({
-            keys: upperKeys,
-            duration: '16',
-            stem_direction: VF.Stem.UP
+            keys: upperKeys, duration: '16', stem_direction: VF.Stem.UP
           });
           if (upperHasOpen) {
             try {
@@ -651,9 +640,7 @@
           lowerRestFlags.push(true);
         } else {
           lowerNotes.push(new VF.StaveNote({
-            keys: lowerKeys,
-            duration: '16',
-            stem_direction: VF.Stem.DOWN
+            keys: lowerKeys, duration: '16', stem_direction: VF.Stem.DOWN
           }));
           lowerRestFlags.push(false);
         }
@@ -675,8 +662,7 @@
       const formatter = new VF.Formatter();
       formatter.joinVoices([voice1, voice2]).format([voice1, voice2], w - 50);
 
-      // Pausen unsichtbar machen, bevor sie gezeichnet werden — der saubere Trick
-      // damit das Layout/Spacing korrekt bleibt, aber die Pausen nicht sichtbar sind
+      // Pausen unsichtbar machen
       upperNotes.forEach((note, i) => {
         if (upperRestFlags[i]) {
           note.setStyle({ fillStyle: 'rgba(0,0,0,0)', strokeStyle: 'rgba(0,0,0,0)' });
@@ -711,6 +697,9 @@
     });
   }
 
+  // ============================================================
+  // PDF-EXPORT
+  // ============================================================
   function getJsPDF() {
     if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
     if (window.jsPDF) return window.jsPDF;
@@ -724,13 +713,13 @@
 
   async function exportPDF() {
     if (typeof Vex === 'undefined') {
-      setStatus('Notations-Library noch nicht geladen, bitte kurz warten.', 'error');
+      setStatus('Notations-Library noch nicht geladen.', 'error');
       return;
     }
     const jsPDFCtor = getJsPDF();
     const svg2pdfFn = getSvg2Pdf();
     if (!jsPDFCtor || !svg2pdfFn) {
-      setStatus('PDF-Libraries noch nicht geladen. Bitte Seite neu laden oder kurz warten.', 'error');
+      setStatus('PDF-Libraries noch nicht geladen. Bitte Seite neu laden.', 'error');
       return;
     }
     setStatus('Erstelle Notenblatt…');
@@ -742,19 +731,18 @@
     }
 
     const pdf = new jsPDFCtor({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageW = 210;
-    const pageH = 297;
-    const margin = 15;
+    const pageW = 210, pageH = 297, margin = 15;
 
     pdf.setFontSize(18);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('toenchen Trackofaktor', margin, margin + 6);
+    pdf.text('DR-25840 · toenchen Trackofaktor', margin, margin + 6);
     pdf.setFontSize(9);
     pdf.setFont('helvetica', 'normal');
     pdf.setTextColor(100);
     const date = new Date().toLocaleDateString('de-DE');
     const bpmVal = el.bpm.value;
-    pdf.text(`Notenblatt · ${date} · ${bpmVal} BPM`, margin, margin + 12);
+    const kitLabel = KITS[state.currentKit].label;
+    pdf.text(`Notenblatt · ${date} · ${bpmVal} BPM · Kit: ${kitLabel}`, margin, margin + 12);
     pdf.setTextColor(0);
 
     pdf.setFontSize(9);
@@ -808,7 +796,6 @@
         }
         yPos += pdfH + 8;
       }
-
       document.body.removeChild(tempDiv);
     }
 
@@ -822,7 +809,7 @@
     pdf.text('Legende:', margin, yPos);
     yPos += 5;
     pdf.setFont('helvetica', 'normal');
-    const legendLines = [
+    [
       'Crash / Ride / Hi-Hat: x-Notenkopf über dem System',
       'Open Hi-Hat: x-Notenkopf mit kleinem Kreis "o" darüber',
       'Pedal Hi-Hat: x-Notenkopf unter dem System',
@@ -830,8 +817,7 @@
       'Toms: ovale Notenköpfe',
       'Snare: ovaler Notenkopf im mittleren Zwischenraum',
       'Kick: ovaler Notenkopf unter dem System, Hals nach unten'
-    ];
-    legendLines.forEach(l => { pdf.text('• ' + l, margin, yPos); yPos += 4.5; });
+    ].forEach(l => { pdf.text('• ' + l, margin, yPos); yPos += 4.5; });
 
     pdf.save(`trackofaktor-${date.replace(/\./g, '-')}.pdf`);
     setStatus('Notenblatt als PDF gespeichert.', 'success');
@@ -839,6 +825,9 @@
 
   el.exportPdfBtn.addEventListener('click', exportPDF);
 
+  // ============================================================
+  // INIT
+  // ============================================================
   buildGrid();
   refreshGrid();
   rebuildTabs();
