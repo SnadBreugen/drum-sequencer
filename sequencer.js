@@ -1,5 +1,6 @@
 /**
  * DR-25840 / toenchen Trackofaktor — Drum Sequencer mit Multi-Kit-Support
+ * Kits: Acoustic (Pearl Master Studio), LinnDrum (LM-2)
  */
 
 (function () {
@@ -9,7 +10,7 @@
   const SLOTS = ['A', 'B', 'C', 'D'];
 
   // ============================================================
-  // DRUM KITS — drei verschiedene Soundsets von Oramics
+  // DRUM KITS — zwei Soundsets von Oramics
   // ============================================================
   const KITS = {
     acoustic: {
@@ -26,22 +27,6 @@
         tl: 'tom-03.wav',
         sn: 'snare-01.wav',
         kd: 'kick-01.wav'
-      }
-    },
-    tr808: {
-      label: 'TR-808',
-      base: 'https://oramics.github.io/sampled/DM/TR-808/samples/',
-      files: {
-        cr: 'cymbal.wav',
-        ri: 'cymbal.wav',
-        oh: 'hihat-open.wav',
-        hh: 'hihat-closed.wav',
-        ph: 'hihat-closed.wav',
-        th: 'tom-h.wav',
-        tm: 'tom-m.wav',
-        tl: 'tom-l.wav',
-        sn: 'snare.wav',
-        kd: 'kick.wav'
       }
     },
     linndrum: {
@@ -662,7 +647,6 @@
       const formatter = new VF.Formatter();
       formatter.joinVoices([voice1, voice2]).format([voice1, voice2], w - 50);
 
-      // Pausen unsichtbar machen
       upperNotes.forEach((note, i) => {
         if (upperRestFlags[i]) {
           note.setStyle({ fillStyle: 'rgba(0,0,0,0)', strokeStyle: 'rgba(0,0,0,0)' });
