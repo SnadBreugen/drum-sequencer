@@ -545,24 +545,19 @@
   }
   el.playBtn.addEventListener('click', togglePlay);
 
-  // ==========================================================================
-  // VexFlow Notation — Standard-Drum-Notation
-  // ==========================================================================
-  // VexFlow nutzt das Format "note/octave/notehead" — für x-Köpfe bei Becken
-  // schreiben wir z.B. "g/5/x" direkt im keys-Array. Das ist die saubere
-  // VexFlow-4-Methode.
+  // VexFlow Notation
   const VF_MAP = {
-    cr: { key: 'a/5/x2', voice: 'up' },    // Crash: x über System
-    ri: { key: 'f/5/x2', voice: 'up' },    // Ride: x auf oberer Linie
-    hh: { key: 'g/5/x2', voice: 'up' },    // Closed HH: x über System
-    oh: { key: 'g/5/x2', voice: 'up', open: true },  // Open HH: + kleiner Kreis
-    ph: { key: 'd/4/x2', voice: 'down' },  // Pedal HH: x unter System
-    th: { key: 'e/5',   voice: 'up' },    // Tom hi: oberster Zwischenraum
-    tm: { key: 'd/5',   voice: 'up' },    // Tom mid
-    tl: { key: 'a/4',   voice: 'down' },  // Tom lo
-    rs: { key: 'c/5/x2', voice: 'up' },    // Rim-Click: x auf Snare-Position
-    sn: { key: 'c/5',   voice: 'up' },    // Snare: ovaler Kopf
-    kd: { key: 'f/4',   voice: 'down' }   // Kick: unterer Zwischenraum
+    cr: { key: 'a/5/x2', voice: 'up' },
+    ri: { key: 'f/5/x2', voice: 'up' },
+    hh: { key: 'g/5/x2', voice: 'up' },
+    oh: { key: 'g/5/x2', voice: 'up', open: true },
+    ph: { key: 'd/4/x2', voice: 'down' },
+    th: { key: 'e/5',   voice: 'up' },
+    tm: { key: 'd/5',   voice: 'up' },
+    tl: { key: 'a/4',   voice: 'down' },
+    rs: { key: 'c/5/x2', voice: 'up' },
+    sn: { key: 'c/5',   voice: 'up' },
+    kd: { key: 'f/4',   voice: 'down' }
   };
 
   function renderPatternVex(container, pattern, opts) {
@@ -575,7 +570,6 @@
     container.innerHTML = '';
 
     const bars = pattern.bars;
-    // Großzügige Breite pro Takt für gut lesbare Notation
     const barWidth = opts.barWidth || 480;
     const leftPad = 70;
     const rightPad = 20;
@@ -604,7 +598,6 @@
       }
       stave.setContext(ctx).draw();
 
-      // Takt-Label
       ctx.save();
       ctx.setFont('Arial', 9);
       ctx.fillText('Takt ' + (barIdx + 1), x + 4, staveTop - 6);
@@ -613,13 +606,15 @@
       const barOffset = barIdx * STEPS_PER_BAR;
       const upperNotes = [];
       const lowerNotes = [];
+      // Trackt welche Notes Pausen sind, damit wir sie nachher unsichtbar machen
+      const upperRestFlags = [];
+      const lowerRestFlags = [];
 
       for (let sib = 0; sib < STEPS_PER_BAR; sib++) {
         const gStep = barOffset + sib;
         const upperKeys = [];
         const lowerKeys = [];
         let upperHasOpen = false;
-        let lowerHasOpen = false;
 
         TRACKS.forEach(t => {
           if (!pattern.data[t.id][gStep]) return;
@@ -630,15 +625,12 @@
             if (m.open) upperHasOpen = true;
           } else {
             lowerKeys.push(m.key);
-            if (m.open) lowerHasOpen = true;
           }
         });
 
-        // Upper voice (Snare, Toms, Becken)
         if (upperKeys.length === 0) {
-          upperNotes.push(new VF.StaveNote({
-            keys: ['b/4'], duration: '16r'
-          }));
+          upperNotes.push(new VF.StaveNote({ keys: ['b/4'], duration: '16r' }));
+          upperRestFlags.push(true);
         } else {
           const note = new VF.StaveNote({
             keys: upperKeys,
@@ -646,31 +638,27 @@
             stem_direction: VF.Stem.UP
           });
           if (upperHasOpen) {
-            // Kreis "o" über der Note für Open HiHat
             try {
-              const art = new VF.Articulation('a@a').setPosition(VF.Modifier.Position.ABOVE);
-              note.addModifier(art, 0);
+              note.addModifier(new VF.Articulation('a@a').setPosition(VF.Modifier.Position.ABOVE), 0);
             } catch(e) {}
           }
           upperNotes.push(note);
+          upperRestFlags.push(false);
         }
 
-        // Lower voice (Kick, Pedal-HH, Tom lo)
         if (lowerKeys.length === 0) {
-          lowerNotes.push(new VF.StaveNote({
-            keys: ['d/4'], duration: '16r'
-          }));
+          lowerNotes.push(new VF.StaveNote({ keys: ['d/4'], duration: '16r' }));
+          lowerRestFlags.push(true);
         } else {
-          const note = new VF.StaveNote({
+          lowerNotes.push(new VF.StaveNote({
             keys: lowerKeys,
             duration: '16',
             stem_direction: VF.Stem.DOWN
-          });
-          lowerNotes.push(note);
+          }));
+          lowerRestFlags.push(false);
         }
       }
 
-      // Balken pro Viertel (4 Sechzehntel zusammen)
       const upperBeams = [];
       const lowerBeams = [];
       for (let g = 0; g < 4; g++) {
@@ -686,6 +674,19 @@
 
       const formatter = new VF.Formatter();
       formatter.joinVoices([voice1, voice2]).format([voice1, voice2], w - 50);
+
+      // Pausen unsichtbar machen, bevor sie gezeichnet werden — der saubere Trick
+      // damit das Layout/Spacing korrekt bleibt, aber die Pausen nicht sichtbar sind
+      upperNotes.forEach((note, i) => {
+        if (upperRestFlags[i]) {
+          note.setStyle({ fillStyle: 'rgba(0,0,0,0)', strokeStyle: 'rgba(0,0,0,0)' });
+        }
+      });
+      lowerNotes.forEach((note, i) => {
+        if (lowerRestFlags[i]) {
+          note.setStyle({ fillStyle: 'rgba(0,0,0,0)', strokeStyle: 'rgba(0,0,0,0)' });
+        }
+      });
 
       voice1.draw(ctx, stave);
       voice2.draw(ctx, stave);
@@ -779,7 +780,6 @@
       tempDiv.style.top = '0';
       document.body.appendChild(tempDiv);
 
-      // PDF-Export bekommt mehr Platz pro Takt für sauberes Lesen
       renderPatternVex(tempDiv, pattern, { barWidth: 460, height: 180 });
 
       const svg = tempDiv.querySelector('svg');
