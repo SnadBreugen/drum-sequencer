@@ -12,26 +12,33 @@
 <body>
   <main class="app">
     <header class="app-header">
-      <h1 class="brand">toenchen Trackofaktor</h1>
-      <p class="subtitle">Grooves bauen, als Notenblatt mitnehmen.</p>
+      <div class="brand-row">
+        <h1 class="brand">toenchen Trackofaktor</h1>
+        <p class="subtitle">Grooves bauen, als Notenblatt mitnehmen</p>
+      </div>
+      <div class="brand-led"></div>
     </header>
 
     <div class="rotate-hint">
       Für bessere Bedienung: Handy drehen (Querformat)
     </div>
 
-    <section class="transport-row">
-      <button id="playBtn" type="button" class="btn-primary">Play</button>
-      <button id="clearBtn" type="button">Takt leeren</button>
+    <section class="transport-row hw-panel">
+      <button id="playBtn" type="button" class="btn-primary">▶ PLAY</button>
+      <button id="clearBtn" type="button" class="hw-btn">Takt leeren</button>
       <div class="bpm-control">
         <label for="bpm">BPM</label>
         <input type="range" id="bpm" min="60" max="200" value="100" step="1">
         <span id="bpmOut">100</span>
       </div>
-      <button id="exportPdfBtn" type="button" class="btn-accent">📄 Notenblatt als PDF</button>
+      <div class="kit-control">
+        <span class="group-label">KIT</span>
+        <div id="kitTabs" class="tab-group"></div>
+      </div>
+      <button id="exportPdfBtn" type="button" class="btn-accent">📄 PDF</button>
     </section>
 
-    <section class="pattern-row">
+    <section class="pattern-row hw-panel">
       <div class="group">
         <span class="group-label">Pattern</span>
         <div id="patternTabs" class="tab-group"></div>
@@ -44,16 +51,16 @@
         <span class="group-label">Takt</span>
         <div id="barTabs" class="tab-group"></div>
       </div>
-      <button id="copyBarBtn" type="button" class="btn-small">Takt kopieren</button>
-      <button id="pasteBarBtn" type="button" class="btn-small" disabled>Takt einfügen</button>
+      <button id="copyBarBtn" type="button" class="btn-small hw-btn">Kopieren</button>
+      <button id="pasteBarBtn" type="button" class="btn-small hw-btn" disabled>Einfügen</button>
       <label class="chain-toggle">
-        <input type="checkbox" id="chainMode"> Pattern-Kette A→B→C→D
+        <input type="checkbox" id="chainMode"> <span>Kette A→B→C→D</span>
       </label>
     </section>
 
     <div id="loadStatus" class="status">Bereit. Klick auf die Zellen, um Schläge zu setzen.</div>
 
-    <section id="gridView">
+    <section id="gridView" class="hw-panel grid-panel">
       <div id="grid"></div>
       <div id="beatLabels">
         <div></div>
@@ -65,7 +72,7 @@
     </section>
 
     <section class="preview-section">
-      <h2 class="preview-title">Vorschau: aktuelles Pattern als Noten</h2>
+      <h2 class="preview-title">DISPLAY · Aktuelles Pattern als Noten</h2>
       <div id="notationPreview" class="notation-preview"></div>
     </section>
 
@@ -75,13 +82,19 @@
         <strong>Grundprinzip:</strong> Jede Zeile ist ein Schlaginstrument, jede Spalte ein Schlag im Takt (16tel-Raster). Klick auf eine Zelle, um sie zu aktivieren. <strong>Play</strong> spielt das aktuelle Pattern in Schleife.
       </p>
       <p>
+        <strong>Drum-Kit wechseln:</strong> Drei Sounds zur Auswahl — <strong>Acoustic</strong> (Studio-Schlagzeug), <strong>TR-808</strong> (legendärer Hip-Hop-Drumcomputer mit tiefem Sub-Kick) und <strong>LinnDrum</strong> (klassischer 80er-Hip-Hop-Sound, knackig und druckvoll). Pattern bleiben beim Wechsel erhalten.
+      </p>
+      <p>
+        <strong>Farbcode der Pads:</strong> Becken leuchten gelb, Hi-Hats grün, Toms orange, Snare blau, Kick pink. So sieht man auf einen Blick, was wann gespielt wird.
+      </p>
+      <p>
         <strong>Pattern A, B, C, D:</strong> Vier unabhängige Grooves. Wechseln oben per Klick. Mit <strong>Pattern-Kette</strong> werden sie nacheinander abgespielt — super für Strophe/Refrain.
       </p>
       <p>
         <strong>Länge:</strong> Pro Pattern kannst du 1 bis 4 Takte nutzen. Zwischen den Takten wechselst du über die Takt-Nummern.
       </p>
       <p>
-        <strong>Takt kopieren / einfügen:</strong> Wie Copy-Paste im Textprogramm. Aktuellen Takt merken, zu einem anderen Takt (oder Pattern) wechseln, einfügen.
+        <strong>Kopieren / Einfügen:</strong> Aktuellen Takt merken, zu einem anderen Takt (oder Pattern) wechseln, einfügen.
       </p>
       <p>
         <strong>Notenblatt als PDF:</strong> Exportiert alle Patterns mit Inhalt als druckbares Notenblatt in echter Drum-Notation. Perfekt zum Ausdrucken und auf den Notenständer legen.
@@ -108,7 +121,7 @@
       <p>
         <strong>Die einzelnen Drums von oben nach unten:</strong>
       </p>
-      <p style="margin-left: 1em; font-size: 11px; line-height: 1.8;">
+      <p class="note-list">
         <strong>Crash</strong> — x-Kopf hoch über dem System<br>
         <strong>Ride</strong> — x-Kopf auf der obersten Linie<br>
         <strong>Hi-Hat geschlossen</strong> — x-Kopf über dem System<br>
@@ -130,7 +143,7 @@
     </section>
 
     <footer class="app-footer">
-      <p>toenchen Trackofaktor · v1.0</p>
+      <p>toenchen Trackofaktor · v1.1</p>
     </footer>
   </main>
 
