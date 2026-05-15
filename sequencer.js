@@ -1,7 +1,6 @@
 /**
  * toenchen Trackofaktor
  * Drum Sequencer mit Notenblatt-Export
- * Keine Regeln — der Drummer entscheidet selbst.
  */
 
 (function () {
@@ -20,7 +19,7 @@
     { id: 'th', label: 'Tom hi',     group: 'tom',    sample: 'tom-01.wav', source: 'remote' },
     { id: 'tm', label: 'Tom mid',    group: 'tom',    sample: 'tom-02.wav', source: 'remote' },
     { id: 'tl', label: 'Tom lo',     group: 'tom',    sample: 'tom-03.wav', source: 'remote' },
-    { id: 'rs', label: 'Rimshot',    group: 'drum',   sample: 'rimshot.wav', source: 'local' },
+    { id: 'rs', label: 'Rim-Click',  group: 'drum',   sample: 'rimshot.wav', source: 'local' },
     { id: 'sn', label: 'Snare',      group: 'drum',   sample: 'snare-01.wav', source: 'remote' },
     { id: 'kd', label: 'Kick',       group: 'drum',   sample: 'kick-01.wav',  source: 'remote' }
   ];
@@ -32,16 +31,12 @@
     ri: 0.80, cr: 1.00
   };
 
-  // Hilfsfunktion: erstellt 16-Step-Array mit 1en an den angegebenen Positionen
-  // Positionen sind 1-basiert (wie auf dem Grid sichtbar): 1..16
   function steps(...positions) {
     const arr = new Array(STEPS_PER_BAR).fill(0);
     positions.forEach(p => { if (p >= 1 && p <= 16) arr[p - 1] = 1; });
     return arr;
   }
 
-  // Default-Pattern A: einfacher Rock-Beat, 1 Takt
-  // Achtel-HiHat (nicht 16tel!), Kick 1+3, Snare 2+4
   const DEFAULT_PATTERN_A = {
     bars: 1,
     data: {
@@ -550,49 +545,25 @@
   }
   el.playBtn.addEventListener('click', togglePlay);
 
-  // VexFlow Notation
+  // ==========================================================================
+  // VexFlow Notation — Standard-Drum-Notation
+  // ==========================================================================
+  // VexFlow nutzt das Format "note/octave/notehead" — für x-Köpfe bei Becken
+  // schreiben wir z.B. "g/5/x" direkt im keys-Array. Das ist die saubere
+  // VexFlow-4-Methode.
   const VF_MAP = {
-    cr: { key: 'a/5',  notehead: 'x', voice: 'up' },
-    ri: { key: 'f/5',  notehead: 'x', voice: 'up' },
-    hh: { key: 'g/5',  notehead: 'x', voice: 'up' },
-    oh: { key: 'g/5',  notehead: 'x', voice: 'up', open: true },
-    ph: { key: 'd/4',  notehead: 'x', voice: 'down' },
-    th: { key: 'e/5',  notehead: 'n', voice: 'up' },
-    tm: { key: 'd/5',  notehead: 'n', voice: 'up' },
-    tl: { key: 'a/4',  notehead: 'n', voice: 'down' },
-    rs: { key: 'c/5',  notehead: 'x', voice: 'up' },
-    sn: { key: 'c/5',  notehead: 'n', voice: 'up' },
-    kd: { key: 'f/4',  notehead: 'n', voice: 'down' }
+    cr: { key: 'a/5/x2', voice: 'up' },    // Crash: x über System
+    ri: { key: 'f/5/x2', voice: 'up' },    // Ride: x auf oberer Linie
+    hh: { key: 'g/5/x2', voice: 'up' },    // Closed HH: x über System
+    oh: { key: 'g/5/x2', voice: 'up', open: true },  // Open HH: + kleiner Kreis
+    ph: { key: 'd/4/x2', voice: 'down' },  // Pedal HH: x unter System
+    th: { key: 'e/5',   voice: 'up' },    // Tom hi: oberster Zwischenraum
+    tm: { key: 'd/5',   voice: 'up' },    // Tom mid
+    tl: { key: 'a/4',   voice: 'down' },  // Tom lo
+    rs: { key: 'c/5/x2', voice: 'up' },    // Rim-Click: x auf Snare-Position
+    sn: { key: 'c/5',   voice: 'up' },    // Snare: ovaler Kopf
+    kd: { key: 'f/4',   voice: 'down' }   // Kick: unterer Zwischenraum
   };
-
-  function buildStaveNote(keys, noteheads, duration, stemDir, VF, openKeys) {
-    const note = new VF.StaveNote({
-      keys: keys,
-      duration: duration,
-      stem_direction: stemDir
-    });
-    for (let i = 0; i < keys.length; i++) {
-      if (noteheads[i] === 'x') {
-        try {
-          note.note_heads[i].note_type = 'x';
-          if (note.note_heads[i].glyph) {
-            note.note_heads[i].glyph.code_head = 'v3e';
-            note.note_heads[i].glyph.code = 'v3e';
-          }
-        } catch(e) {}
-      }
-    }
-    if (openKeys && openKeys.length) {
-      for (let i = 0; i < keys.length; i++) {
-        if (openKeys.includes(keys[i])) {
-          try {
-            note.addModifier(new VF.Articulation('a+').setPosition(VF.Modifier.Position.ABOVE), i);
-          } catch(e) {}
-        }
-      }
-    }
-    return note;
-  }
 
   function renderPatternVex(container, pattern, opts) {
     opts = opts || {};
@@ -604,11 +575,12 @@
     container.innerHTML = '';
 
     const bars = pattern.bars;
-    const barWidth = opts.barWidth || 280;
-    const leftPad = 60;
+    // Großzügige Breite pro Takt für gut lesbare Notation
+    const barWidth = opts.barWidth || 480;
+    const leftPad = 70;
     const rightPad = 20;
     const width = leftPad + bars * barWidth + rightPad;
-    const height = opts.height || 200;
+    const height = opts.height || 220;
 
     const div = document.createElement('div');
     container.appendChild(div);
@@ -618,7 +590,7 @@
     const ctx = renderer.getContext();
     ctx.setFont('Arial', 10);
 
-    const staveTop = opts.label ? 50 : 30;
+    const staveTop = opts.label ? 60 : 40;
 
     for (let barIdx = 0; barIdx < bars; barIdx++) {
       const x = (barIdx === 0) ? 10 : leftPad + barIdx * barWidth - 10;
@@ -632,9 +604,10 @@
       }
       stave.setContext(ctx).draw();
 
+      // Takt-Label
       ctx.save();
       ctx.setFont('Arial', 9);
-      ctx.fillText('Takt ' + (barIdx + 1), x + 4, staveTop - 4);
+      ctx.fillText('Takt ' + (barIdx + 1), x + 4, staveTop - 6);
       ctx.restore();
 
       const barOffset = barIdx * STEPS_PER_BAR;
@@ -645,10 +618,8 @@
         const gStep = barOffset + sib;
         const upperKeys = [];
         const lowerKeys = [];
-        const upperHeads = [];
-        const lowerHeads = [];
-        const upperOpen = [];
-        const lowerOpen = [];
+        let upperHasOpen = false;
+        let lowerHasOpen = false;
 
         TRACKS.forEach(t => {
           if (!pattern.data[t.id][gStep]) return;
@@ -656,33 +627,56 @@
           if (!m) return;
           if (m.voice === 'up') {
             upperKeys.push(m.key);
-            upperHeads.push(m.notehead);
-            if (m.open) upperOpen.push(m.key);
+            if (m.open) upperHasOpen = true;
           } else {
             lowerKeys.push(m.key);
-            lowerHeads.push(m.notehead);
-            if (m.open) lowerOpen.push(m.key);
+            if (m.open) lowerHasOpen = true;
           }
         });
 
+        // Upper voice (Snare, Toms, Becken)
         if (upperKeys.length === 0) {
-          upperNotes.push(new VF.StaveNote({ keys: ['b/4'], duration: '16r' }));
+          upperNotes.push(new VF.StaveNote({
+            keys: ['b/4'], duration: '16r'
+          }));
         } else {
-          upperNotes.push(buildStaveNote(upperKeys, upperHeads, '16', VF.Stem.UP, VF, upperOpen));
+          const note = new VF.StaveNote({
+            keys: upperKeys,
+            duration: '16',
+            stem_direction: VF.Stem.UP
+          });
+          if (upperHasOpen) {
+            // Kreis "o" über der Note für Open HiHat
+            try {
+              const art = new VF.Articulation('a@a').setPosition(VF.Modifier.Position.ABOVE);
+              note.addModifier(art, 0);
+            } catch(e) {}
+          }
+          upperNotes.push(note);
         }
+
+        // Lower voice (Kick, Pedal-HH, Tom lo)
         if (lowerKeys.length === 0) {
-          lowerNotes.push(new VF.StaveNote({ keys: ['d/4'], duration: '16r' }));
+          lowerNotes.push(new VF.StaveNote({
+            keys: ['d/4'], duration: '16r'
+          }));
         } else {
-          lowerNotes.push(buildStaveNote(lowerKeys, lowerHeads, '16', VF.Stem.DOWN, VF, lowerOpen));
+          const note = new VF.StaveNote({
+            keys: lowerKeys,
+            duration: '16',
+            stem_direction: VF.Stem.DOWN
+          });
+          lowerNotes.push(note);
         }
       }
 
+      // Balken pro Viertel (4 Sechzehntel zusammen)
       const upperBeams = [];
       const lowerBeams = [];
       for (let g = 0; g < 4; g++) {
         const startIdx = g * 4;
-        const group = upperNotes.slice(startIdx, startIdx + 4).filter(n => !n.isRest());
-        if (group.length >= 2) upperBeams.push(new VF.Beam(group));
+        const ugroup = upperNotes.slice(startIdx, startIdx + 4).filter(n => !n.isRest());
+        if (ugroup.length >= 2) upperBeams.push(new VF.Beam(ugroup));
         const lgroup = lowerNotes.slice(startIdx, startIdx + 4).filter(n => !n.isRest());
         if (lgroup.length >= 2) lowerBeams.push(new VF.Beam(lgroup));
       }
@@ -691,7 +685,7 @@
       const voice2 = new VF.Voice({ num_beats: 4, beat_value: 4 }).setStrict(false).addTickables(lowerNotes);
 
       const formatter = new VF.Formatter();
-      formatter.joinVoices([voice1, voice2]).format([voice1, voice2], w - 40);
+      formatter.joinVoices([voice1, voice2]).format([voice1, voice2], w - 50);
 
       voice1.draw(ctx, stave);
       voice2.draw(ctx, stave);
@@ -702,7 +696,7 @@
     if (opts.label) {
       ctx.save();
       ctx.setFont('Arial', 12, 'bold');
-      ctx.fillText(opts.label, 10, 18);
+      ctx.fillText(opts.label, 10, 22);
       ctx.restore();
     }
   }
@@ -711,8 +705,8 @@
     if (!el.notationPreview) return;
     renderPatternVex(el.notationPreview, state.patterns[state.currentSlot], {
       label: `Pattern ${state.currentSlot} · ${state.patterns[state.currentSlot].bars} ${state.patterns[state.currentSlot].bars === 1 ? 'Takt' : 'Takte'}`,
-      barWidth: 240,
-      height: 190
+      barWidth: 460,
+      height: 200
     });
   }
 
@@ -764,7 +758,7 @@
 
     pdf.setFontSize(9);
     pdf.setFont('helvetica', 'italic');
-    pdf.text('Perkussions-Schlüssel, 4/4. x-Köpfe = Becken/HiHat/Rimshot, ovale Köpfe = Trommeln.', margin, margin + 18);
+    pdf.text('Perkussions-Schlüssel, 4/4. x-Köpfe = Becken/HiHat/Rim-Click, ovale Köpfe = Trommeln.', margin, margin + 18);
     pdf.setFont('helvetica', 'normal');
 
     let yPos = margin + 26;
@@ -785,7 +779,8 @@
       tempDiv.style.top = '0';
       document.body.appendChild(tempDiv);
 
-      renderPatternVex(tempDiv, pattern, { barWidth: 260, height: 170 });
+      // PDF-Export bekommt mehr Platz pro Takt für sauberes Lesen
+      renderPatternVex(tempDiv, pattern, { barWidth: 460, height: 180 });
 
       const svg = tempDiv.querySelector('svg');
       if (svg) {
@@ -829,10 +824,10 @@
     pdf.setFont('helvetica', 'normal');
     const legendLines = [
       'Crash / Ride / Hi-Hat: x-Notenkopf über dem System',
-      'Open Hi-Hat: x-Notenkopf mit "+"-Artikulation',
+      'Open Hi-Hat: x-Notenkopf mit kleinem Kreis "o" darüber',
       'Pedal Hi-Hat: x-Notenkopf unter dem System',
-      'Rimshot: x-Notenkopf auf der Snare-Linie',
-      'Toms: ovale Notenköpfe, hoch nach oben sortiert',
+      'Rim-Click: x-Notenkopf auf der Snare-Position',
+      'Toms: ovale Notenköpfe',
       'Snare: ovaler Notenkopf im mittleren Zwischenraum',
       'Kick: ovaler Notenkopf unter dem System, Hals nach unten'
     ];
