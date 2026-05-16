@@ -13,12 +13,6 @@
   const DRAG_PIXELS_FOR_FULL_RANGE = 80;
   const DRAG_THRESHOLD_PX = 3;
 
-  // ============================================================
-  // DRUM KITS
-  // - acoustic: Pearl Master Studio (von Oramics)
-  // - linndrum: LinnDrum LM-2 (von Oramics)
-  // - modern: User-eigene Samples aus samples/modern/
-  // ============================================================
   const KITS = {
     acoustic: {
       label: 'Acoustic',
@@ -55,11 +49,15 @@
         sn: 'snare.wav',
         kd: 'Kick.wav'
       },
-      localRim: 'samples/modern/rim.wav'  // modernes Rim statt rimshot.wav
+      localRim: 'samples/modern/rim.wav',
+      // Kit-spezifische Lautstärke-Overrides — die Crash-Perc ist normal etwas zu laut
+      gainOverrides: {
+        cr: 0.5
+      }
     }
   };
 
-  const RIM_CLICK_SAMPLE = 'rimshot.wav';  // fallback für Kits ohne eigenes Rim
+  const RIM_CLICK_SAMPLE = 'rimshot.wav';
   const HIHAT_IDS = ['hh', 'oh', 'ph'];
   const CHOKES_OPEN = ['hh', 'ph'];
 
@@ -77,12 +75,22 @@
     { id: 'kd', label: 'Kick',       group: 'drum'   }
   ];
 
+  // Globale Standard-Gains (gelten für alle Kits, können von kit.gainOverrides überschrieben werden)
   const DRUM_GAIN = {
     kd: 1.15, sn: 1.05, rs: 1.00,
     hh: 0.80, oh: 0.90, ph: 0.30,
     th: 1.00, tm: 1.00, tl: 1.00,
     ri: 0.80, cr: 1.00
   };
+
+  // Ermittelt den effektiven Gain für einen Drum-ID im aktuellen Kit
+  function getEffectiveGain(drumId) {
+    const kit = KITS[state.currentKit];
+    if (kit && kit.gainOverrides && typeof kit.gainOverrides[drumId] === 'number') {
+      return kit.gainOverrides[drumId];
+    }
+    return DRUM_GAIN[drumId] || 1.0;
+  }
 
   function steps(...positions) {
     const arr = new Array(STEPS_PER_BAR).fill(0);
@@ -191,7 +199,6 @@
         .catch(err => { console.warn('Sample fail', url, err); })
     );
 
-    // Rim-Click: jedes Kit kann sein eigenes haben, sonst Default
     const rimUrl = kit.localRim || RIM_CLICK_SAMPLE;
     promises.push(
       loadSampleBuffer(rimUrl)
@@ -251,7 +258,7 @@
     const src = audio.ctx.createBufferSource();
     src.buffer = audio.buffers[id];
     const g = audio.ctx.createGain();
-    const drumGain = DRUM_GAIN[id] || 1.0;
+    const drumGain = getEffectiveGain(id);
     const v = (typeof velocity === 'number') ? velocity : 1.0;
     g.gain.value = v * drumGain;
 
