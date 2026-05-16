@@ -43,16 +43,28 @@
         oh: 'open_hihat.wav',
         hh: 'closed_hihat.wav',
         ph: 'Shakers_15.wav',
-        th: 'hitom.wav',
-        tm: 'mid_tom.wav',
+        // hi und mid tom getauscht
+        th: 'mid_tom.wav',
+        tm: 'hitom.wav',
         tl: 'low_tom.wav',
         sn: 'snare.wav',
         kd: 'Kick.wav'
       },
       localRim: 'samples/modern/rim.wav',
-      // Kit-spezifische Lautstärke-Overrides — die Crash-Perc ist normal etwas zu laut
-      gainOverrides: {
-        cr: 0.5
+      gainOverrides: { cr: 0.5 },
+      labelOverrides: {
+        cr: 'Perc',
+        ri: 'Clap',
+        ph: 'Shaker'
+      },
+      // Kit-spezifische Mutex-Paare im Grid (gegenseitig ausschließend auf gleichem Step)
+      gridMutex: [
+        ['cr', 'kd']  // Perc und Kick gegenseitig ausschließend
+      ],
+      // Kit-spezifisches Audio-Choke beim Abspielen:
+      // Wenn 'kd' kommt, wird laufender 'cr' abgewürgt
+      audioChoke: {
+        cr: ['kd']  // 'cr' wird gechoked von 'kd'
       }
     }
   };
@@ -75,7 +87,6 @@
     { id: 'kd', label: 'Kick',       group: 'drum'   }
   ];
 
-  // Globale Standard-Gains (gelten für alle Kits, können von kit.gainOverrides überschrieben werden)
   const DRUM_GAIN = {
     kd: 1.15, sn: 1.05, rs: 1.00,
     hh: 0.80, oh: 0.90, ph: 0.30,
@@ -83,13 +94,21 @@
     ri: 0.80, cr: 1.00
   };
 
-  // Ermittelt den effektiven Gain für einen Drum-ID im aktuellen Kit
   function getEffectiveGain(drumId) {
     const kit = KITS[state.currentKit];
     if (kit && kit.gainOverrides && typeof kit.gainOverrides[drumId] === 'number') {
       return kit.gainOverrides[drumId];
     }
     return DRUM_GAIN[drumId] || 1.0;
+  }
+
+  function getTrackLabel(trackId) {
+    const kit = KITS[state.currentKit];
+    if (kit && kit.labelOverrides && kit.labelOverrides[trackId]) {
+      return kit.labelOverrides[trackId];
+    }
+    const track = TRACKS.find(t => t.id === trackId);
+    return track ? track.label : trackId;
   }
 
   function steps(...positions) {
@@ -154,7 +173,9 @@
   const audio = {
     ctx: null, masterGain: null, buffers: {},
     loadingKit: null, loadedKit: null,
-    openHHActive: null
+    openHHActive: null,
+    // Generischer Tracker für aktive Sources, die gechoked werden können
+    activeSources: {}  // trackId -> { source, gainNode }
   };
 
   function ensureCtx() {
@@ -247,13 +268,46 @@
     audio.openHHActive = null;
   }
 
+  // Generischer Choker für beliebige aktive Sources
+  function chokeActiveSource(trackId, when) {
+    const active = audio.activeSources[trackId];
+    if (!active) return;
+    const stopAt = when || audio.ctx.currentTime;
+    const fadeMs = 0.005;
+    try {
+      active.gainNode.gain.cancelScheduledValues(stopAt);
+      active.gainNode.gain.setValueAtTime(active.gainNode.gain.value, stopAt);
+      active.gainNode.gain.linearRampToValueAtTime(0, stopAt + fadeMs);
+      active.source.stop(stopAt + fadeMs + 0.001);
+    } catch (e) {}
+    audio.activeSources[trackId] = null;
+  }
+
+  // Prüft welche Sources der gerade getriggerte Sound abwürgen soll
+  function applyAudioChoke(triggeredId, when) {
+    // Open-HH-Choke (bestehende Logik)
+    if (CHOKES_OPEN.indexOf(triggeredId) !== -1) {
+      chokeOpenHH(when);
+    }
+    // Kit-spezifische Choke-Regeln
+    const kit = KITS[state.currentKit];
+    if (!kit || !kit.audioChoke) return;
+    // Für jede Regel: "trackX wird von [listIds] gechoked"
+    // Wenn triggeredId in der Liste, würge trackX ab
+    Object.keys(kit.audioChoke).forEach(victimId => {
+      const choppers = kit.audioChoke[victimId];
+      if (choppers.indexOf(triggeredId) !== -1) {
+        chokeActiveSource(victimId, when);
+      }
+    });
+  }
+
   function playSample(id, when, velocity) {
     if (!audio.buffers[id]) return;
     const playAt = when || audio.ctx.currentTime;
 
-    if (CHOKES_OPEN.indexOf(id) !== -1) {
-      chokeOpenHH(playAt);
-    }
+    // Choke-Regeln anwenden (sowohl Open-HH-Logik als auch Kit-spezifisch)
+    applyAudioChoke(id, playAt);
 
     const src = audio.ctx.createBufferSource();
     src.buffer = audio.buffers[id];
@@ -282,6 +336,7 @@
     }
     src.start(playAt);
 
+    // Open-HH speziell tracken (für Auto-Choke bei nächster HiHat)
     if (id === 'oh') {
       audio.openHHActive = { source: src, gainNode: g, stopTime: playAt + (src.buffer.duration || 1.0) };
       src.onended = () => {
@@ -289,6 +344,18 @@
           audio.openHHActive = null;
         }
       };
+    }
+
+    // Generisches Tracking: wenn dieser Sound im Choke-Verzeichnis als Opfer steht, merken
+    const kit = KITS[state.currentKit];
+    if (kit && kit.audioChoke && kit.audioChoke[id]) {
+      audio.activeSources[id] = { source: src, gainNode: g };
+      src.onended = ((existingHandler) => () => {
+        if (existingHandler) existingHandler();
+        if (audio.activeSources[id] && audio.activeSources[id].source === src) {
+          audio.activeSources[id] = null;
+        }
+      })(src.onended);
     }
   }
 
@@ -322,11 +389,19 @@
     bar.style.height = pct + '%';
   }
 
+  function refreshTrackLabels() {
+    TRACKS.forEach(track => {
+      const lbl = el.grid.querySelector(`.row-label[data-track="${track.id}"] .row-label-name`);
+      if (lbl) lbl.textContent = getTrackLabel(track.id);
+    });
+  }
+
   function buildGrid() {
     el.grid.innerHTML = '';
     TRACKS.forEach(track => {
       const lbl = document.createElement('div');
       lbl.className = 'row-label';
+      lbl.dataset.track = track.id;
       const preview = document.createElement('button');
       preview.type = 'button';
       preview.className = 'preview-btn';
@@ -338,7 +413,8 @@
         (audio._kitPromise || Promise.resolve()).then(() => playSample(track.id));
       });
       const name = document.createElement('span');
-      name.textContent = track.label;
+      name.className = 'row-label-name';
+      name.textContent = getTrackLabel(track.id);
       lbl.appendChild(preview);
       lbl.appendChild(name);
       el.grid.appendChild(lbl);
@@ -355,6 +431,54 @@
         el.grid.appendChild(cell);
       }
     });
+  }
+
+  // Generisches Grid-Mutex: bei aktiviertem trackId auf gleichem Step werden alle
+  // Partner aus mutex-Paaren des aktuellen Kits entfernt
+  function applyKitGridMutex(data, trackId, gStep) {
+    const kit = KITS[state.currentKit];
+    if (!kit || !kit.gridMutex) return;
+    kit.gridMutex.forEach(pair => {
+      if (pair.indexOf(trackId) === -1) return;
+      pair.forEach(otherId => {
+        if (otherId === trackId) return;
+        if (data[otherId][gStep]) {
+          data[otherId][gStep] = 0;
+          const sib = gStep % STEPS_PER_BAR;
+          const bar = Math.floor(gStep / STEPS_PER_BAR);
+          if (bar === state.currentBar) {
+            const otherCell = el.grid.querySelector(`.cell[data-track="${otherId}"][data-sib="${sib}"]`);
+            if (otherCell) {
+              otherCell.classList.remove('on');
+              updateCellVelocityBar(otherCell, 0);
+            }
+          }
+        }
+      });
+    });
+  }
+
+  function applyHihatMutex(data, trackId, gStep) {
+    if (HIHAT_IDS.indexOf(trackId) === -1) return;
+    HIHAT_IDS.forEach(otherId => {
+      if (otherId !== trackId && data[otherId][gStep]) {
+        data[otherId][gStep] = 0;
+        const sib = gStep % STEPS_PER_BAR;
+        const bar = Math.floor(gStep / STEPS_PER_BAR);
+        if (bar === state.currentBar) {
+          const otherCell = el.grid.querySelector(`.cell[data-track="${otherId}"][data-sib="${sib}"]`);
+          if (otherCell) {
+            otherCell.classList.remove('on');
+            updateCellVelocityBar(otherCell, 0);
+          }
+        }
+      }
+    });
+  }
+
+  function applyAllMutex(data, trackId, gStep) {
+    applyHihatMutex(data, trackId, gStep);
+    applyKitGridMutex(data, trackId, gStep);
   }
 
   function attachCellInteractions(cell, trackId, sib) {
@@ -388,7 +512,7 @@
 
         if (!dragState.wasActive) {
           const data = currentData();
-          applyHihatMutex(data, trackId, dragState.gStep);
+          applyAllMutex(data, trackId, dragState.gStep);
           data[trackId][dragState.gStep] = dragState.startVelocity;
           cell.classList.add('on');
           updateCellVelocityBar(cell, dragState.startVelocity);
@@ -423,7 +547,7 @@
           cell.classList.remove('on');
           updateCellVelocityBar(cell, 0);
         } else {
-          applyHihatMutex(data, trackId, dragState.gStep);
+          applyAllMutex(data, trackId, dragState.gStep);
           data[trackId][dragState.gStep] = DEFAULT_VELOCITY;
           cell.classList.add('on');
           updateCellVelocityBar(cell, DEFAULT_VELOCITY);
@@ -435,24 +559,6 @@
 
       dragState = null;
     }
-  }
-
-  function applyHihatMutex(data, trackId, gStep) {
-    if (HIHAT_IDS.indexOf(trackId) === -1) return;
-    HIHAT_IDS.forEach(otherId => {
-      if (otherId !== trackId && data[otherId][gStep]) {
-        data[otherId][gStep] = 0;
-        const sib = gStep % STEPS_PER_BAR;
-        const bar = Math.floor(gStep / STEPS_PER_BAR);
-        if (bar === state.currentBar) {
-          const otherCell = el.grid.querySelector(`.cell[data-track="${otherId}"][data-sib="${sib}"]`);
-          if (otherCell) {
-            otherCell.classList.remove('on');
-            updateCellVelocityBar(otherCell, 0);
-          }
-        }
-      }
-    });
   }
 
   function refreshGrid() {
@@ -537,6 +643,7 @@
         if (state.currentKit === kitId) return;
         state.currentKit = kitId;
         rebuildTabs();
+        refreshTrackLabels();
         loadKit(kitId);
       });
       el.kitTabs.appendChild(tab);
