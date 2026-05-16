@@ -1,8 +1,6 @@
 /**
- * DR-25840 / toenchen Trackofaktor — Drum Sequencer mit Multi-Kit-Support
- * Hi-Hat-Logik:
- *   - Mutex: hh / oh / ph schließen sich auf demselben Step gegenseitig aus
- *   - Auto-Choke: laufende Open-HH wird gestoppt, sobald hh oder ph getriggert wird
+ * DR-25840 — Drum Sequencer mit Multi-Kit-Support
+ * Kits: Acoustic (Pearl), LinnDrum (LM-2), Modern (User-Samples)
  */
 
 (function () {
@@ -10,7 +8,17 @@
 
   const STEPS_PER_BAR = 16;
   const SLOTS = ['A', 'B', 'C', 'D'];
+  const DEFAULT_VELOCITY = 1.0;
+  const MIN_VELOCITY = 0.1;
+  const DRAG_PIXELS_FOR_FULL_RANGE = 80;
+  const DRAG_THRESHOLD_PX = 3;
 
+  // ============================================================
+  // DRUM KITS
+  // - acoustic: Pearl Master Studio (von Oramics)
+  // - linndrum: LinnDrum LM-2 (von Oramics)
+  // - modern: User-eigene Samples aus samples/modern/
+  // ============================================================
   const KITS = {
     acoustic: {
       label: 'Acoustic',
@@ -31,14 +39,28 @@
         th: 'tom-h.wav', tm: 'tom-m.wav', tl: 'tom-l.wav',
         sn: 'snare-m.wav', kd: 'kick.wav'
       }
+    },
+    modern: {
+      label: 'Modern',
+      base: 'samples/modern/',
+      files: {
+        cr: 'crash_perc.wav',
+        ri: 'ride_clap.wav',
+        oh: 'open_hihat.wav',
+        hh: 'closed_hihat.wav',
+        ph: 'Shakers_15.wav',
+        th: 'hitom.wav',
+        tm: 'mid_tom.wav',
+        tl: 'low_tom.wav',
+        sn: 'snare.wav',
+        kd: 'Kick.wav'
+      },
+      localRim: 'samples/modern/rim.wav'  // modernes Rim statt rimshot.wav
     }
   };
 
-  const RIM_CLICK_SAMPLE = 'rimshot.wav';
-
-  // Hi-Hat-IDs (für Mutex und Choke-Logik)
+  const RIM_CLICK_SAMPLE = 'rimshot.wav';  // fallback für Kits ohne eigenes Rim
   const HIHAT_IDS = ['hh', 'oh', 'ph'];
-  // Welche IDs würgen die Open-HH ab?
   const CHOKES_OPEN = ['hh', 'ph'];
 
   const TRACKS = [
@@ -64,7 +86,7 @@
 
   function steps(...positions) {
     const arr = new Array(STEPS_PER_BAR).fill(0);
-    positions.forEach(p => { if (p >= 1 && p <= 16) arr[p - 1] = 1; });
+    positions.forEach(p => { if (p >= 1 && p <= 16) arr[p - 1] = DEFAULT_VELOCITY; });
     return arr;
   }
 
@@ -121,14 +143,10 @@
   const currentBars = () => currentSlot().bars;
   const globalStep  = (bar, sib) => bar * STEPS_PER_BAR + sib;
 
-  // ============================================================
-  // AUDIO
-  // ============================================================
   const audio = {
     ctx: null, masterGain: null, buffers: {},
     loadingKit: null, loadedKit: null,
-    // Für Auto-Choke: laufender Open-HH-Source + sein Gain-Node
-    openHHActive: null  // { source, gainNode, stopTime }
+    openHHActive: null
   };
 
   function ensureCtx() {
@@ -172,8 +190,11 @@
         .then(buf => { urlMap[url].forEach(id => { audio.buffers[id] = buf; }); })
         .catch(err => { console.warn('Sample fail', url, err); })
     );
+
+    // Rim-Click: jedes Kit kann sein eigenes haben, sonst Default
+    const rimUrl = kit.localRim || RIM_CLICK_SAMPLE;
     promises.push(
-      loadSampleBuffer(RIM_CLICK_SAMPLE)
+      loadSampleBuffer(rimUrl)
         .then(buf => { audio.buffers.rs = buf; })
         .catch(err => {
           console.warn('Rim-Click fail, fallback to snare', err);
@@ -205,28 +226,24 @@
     }
   }
 
-  // Würgt eine laufende Open-HH ab — kurzer Fade-out (5ms) damit kein Klick entsteht
   function chokeOpenHH(when) {
     if (!audio.openHHActive) return;
     const { source, gainNode } = audio.openHHActive;
     const stopAt = when || audio.ctx.currentTime;
-    const fadeMs = 0.005; // 5 Millisekunden weicher Fade
+    const fadeMs = 0.005;
     try {
       gainNode.gain.cancelScheduledValues(stopAt);
       gainNode.gain.setValueAtTime(gainNode.gain.value, stopAt);
       gainNode.gain.linearRampToValueAtTime(0, stopAt + fadeMs);
       source.stop(stopAt + fadeMs + 0.001);
-    } catch (e) {
-      // Source war evtl. schon zu Ende — egal
-    }
+    } catch (e) {}
     audio.openHHActive = null;
   }
 
-  function playSample(id, when, gain) {
+  function playSample(id, when, velocity) {
     if (!audio.buffers[id]) return;
     const playAt = when || audio.ctx.currentTime;
 
-    // AUTO-CHOKE: wenn eine schließende Hi-Hat kommt, würge die laufende Open-HH ab
     if (CHOKES_OPEN.indexOf(id) !== -1) {
       chokeOpenHH(playAt);
     }
@@ -235,7 +252,8 @@
     src.buffer = audio.buffers[id];
     const g = audio.ctx.createGain();
     const drumGain = DRUM_GAIN[id] || 1.0;
-    g.gain.value = (gain || 1.0) * drumGain;
+    const v = (typeof velocity === 'number') ? velocity : 1.0;
+    g.gain.value = v * drumGain;
 
     if (id === 'hh' || id === 'oh' || id === 'ph') {
       const highpass = audio.ctx.createBiquadFilter();
@@ -257,10 +275,8 @@
     }
     src.start(playAt);
 
-    // OPEN-HH MERKEN für späteres Choken
     if (id === 'oh') {
       audio.openHHActive = { source: src, gainNode: g, stopTime: playAt + (src.buffer.duration || 1.0) };
-      // Wenn das Sample natürlich ausläuft, das aktive Flag wieder löschen
       src.onended = () => {
         if (audio.openHHActive && audio.openHHActive.source === src) {
           audio.openHHActive = null;
@@ -269,9 +285,6 @@
     }
   }
 
-  // ============================================================
-  // UI
-  // ============================================================
   const el = {
     grid: document.getElementById('grid'),
     patternTabs: document.getElementById('patternTabs'),
@@ -293,6 +306,13 @@
   function setStatus(msg, level) {
     el.status.textContent = msg;
     el.status.className = 'status' + (level ? ' ' + level : '');
+  }
+
+  function updateCellVelocityBar(cellEl, velocity) {
+    const bar = cellEl.querySelector('.velocity-bar');
+    if (!bar) return;
+    const pct = Math.max(0, Math.min(1, velocity)) * 100;
+    bar.style.height = pct + '%';
   }
 
   function buildGrid() {
@@ -321,50 +341,111 @@
         cell.className = 'cell' + (sib % 4 === 0 ? ' beat-start' : '');
         cell.dataset.track = track.id;
         cell.dataset.sib = String(sib);
-        cell.addEventListener('click', () => handleCellClick(track.id, sib, cell));
+        const velBar = document.createElement('span');
+        velBar.className = 'velocity-bar';
+        cell.appendChild(velBar);
+        attachCellInteractions(cell, track.id, sib);
         el.grid.appendChild(cell);
       }
     });
   }
 
-  // HI-HAT-MUTEX: Wenn auf demselben Step bereits eine andere Hi-Hat aktiv ist,
-  // wird sie entfernt bevor die neue gesetzt wird.
+  function attachCellInteractions(cell, trackId, sib) {
+    let dragState = null;
+
+    cell.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+
+      const data = currentData();
+      const gStep = globalStep(state.currentBar, sib);
+      const wasActive = data[trackId][gStep] > 0;
+
+      dragState = {
+        startY: e.clientY,
+        startVelocity: wasActive ? data[trackId][gStep] : DEFAULT_VELOCITY,
+        wasActive: wasActive,
+        didDrag: false,
+        gStep: gStep
+      };
+
+      window.addEventListener('mousemove', onDragMove);
+      window.addEventListener('mouseup', onDragEnd);
+    });
+
+    function onDragMove(e) {
+      if (!dragState) return;
+      const dy = dragState.startY - e.clientY;
+      if (!dragState.didDrag && Math.abs(dy) >= DRAG_THRESHOLD_PX) {
+        dragState.didDrag = true;
+
+        if (!dragState.wasActive) {
+          const data = currentData();
+          applyHihatMutex(data, trackId, dragState.gStep);
+          data[trackId][dragState.gStep] = dragState.startVelocity;
+          cell.classList.add('on');
+          updateCellVelocityBar(cell, dragState.startVelocity);
+        }
+        cell.classList.add('dragging');
+      }
+
+      if (dragState.didDrag) {
+        const delta = dy / DRAG_PIXELS_FOR_FULL_RANGE;
+        let newVel = dragState.startVelocity + delta;
+        newVel = Math.max(MIN_VELOCITY, Math.min(1.0, newVel));
+        const data = currentData();
+        data[trackId][dragState.gStep] = newVel;
+        updateCellVelocityBar(cell, newVel);
+      }
+    }
+
+    function onDragEnd(e) {
+      window.removeEventListener('mousemove', onDragMove);
+      window.removeEventListener('mouseup', onDragEnd);
+
+      if (!dragState) return;
+
+      const data = currentData();
+
+      if (dragState.didDrag) {
+        cell.classList.remove('dragging');
+        renderPreviewNotation();
+      } else {
+        if (dragState.wasActive) {
+          data[trackId][dragState.gStep] = 0;
+          cell.classList.remove('on');
+          updateCellVelocityBar(cell, 0);
+        } else {
+          applyHihatMutex(data, trackId, dragState.gStep);
+          data[trackId][dragState.gStep] = DEFAULT_VELOCITY;
+          cell.classList.add('on');
+          updateCellVelocityBar(cell, DEFAULT_VELOCITY);
+          ensureAudioReady();
+          (audio._kitPromise || Promise.resolve()).then(() => playSample(trackId, undefined, DEFAULT_VELOCITY));
+        }
+        renderPreviewNotation();
+      }
+
+      dragState = null;
+    }
+  }
+
   function applyHihatMutex(data, trackId, gStep) {
     if (HIHAT_IDS.indexOf(trackId) === -1) return;
     HIHAT_IDS.forEach(otherId => {
       if (otherId !== trackId && data[otherId][gStep]) {
         data[otherId][gStep] = 0;
-        // Auch die UI-Zelle aktualisieren
         const sib = gStep % STEPS_PER_BAR;
         const bar = Math.floor(gStep / STEPS_PER_BAR);
         if (bar === state.currentBar) {
           const otherCell = el.grid.querySelector(`.cell[data-track="${otherId}"][data-sib="${sib}"]`);
-          if (otherCell) otherCell.classList.remove('on');
+          if (otherCell) {
+            otherCell.classList.remove('on');
+            updateCellVelocityBar(otherCell, 0);
+          }
         }
       }
     });
-  }
-
-  function handleCellClick(trackId, sib, cellEl) {
-    const data = currentData();
-    const gStep = globalStep(state.currentBar, sib);
-    const wasOn = data[trackId][gStep];
-    const newVal = wasOn ? 0 : 1;
-
-    if (newVal) {
-      // Beim Aktivieren: erst Mutex anwenden (andere Hi-Hats auf gleichem Step entfernen)
-      applyHihatMutex(data, trackId, gStep);
-    }
-
-    data[trackId][gStep] = newVal;
-    if (newVal) {
-      cellEl.classList.add('on');
-      ensureAudioReady();
-      (audio._kitPromise || Promise.resolve()).then(() => playSample(trackId));
-    } else {
-      cellEl.classList.remove('on');
-    }
-    renderPreviewNotation();
   }
 
   function refreshGrid() {
@@ -374,7 +455,9 @@
         const gStep = globalStep(state.currentBar, sib);
         const cell = el.grid.querySelector(`.cell[data-track="${track.id}"][data-sib="${sib}"]`);
         if (!cell) continue;
-        cell.classList.toggle('on', Boolean(data[track.id][gStep]));
+        const v = data[track.id][gStep];
+        cell.classList.toggle('on', v > 0);
+        updateCellVelocityBar(cell, v);
       }
     });
   }
@@ -384,7 +467,7 @@
     const off = bar * STEPS_PER_BAR;
     for (const t of TRACKS) {
       const row = p.data[t.id];
-      for (let s = 0; s < STEPS_PER_BAR; s++) if (row[off + s]) return true;
+      for (let s = 0; s < STEPS_PER_BAR; s++) if (row[off + s] > 0) return true;
     }
     return false;
   }
@@ -522,7 +605,8 @@
       state.currentStep = (state.currentStep + 1) % totalSteps;
       const d = p.data;
       TRACKS.forEach(t => {
-        if (d[t.id][state.currentStep]) playSample(t.id, nextStepTime, 1.0);
+        const v = d[t.id][state.currentStep];
+        if (v > 0) playSample(t.id, nextStepTime, v);
       });
       const drawAt = nextStepTime;
       const playingSlot = slotPlaying;
@@ -554,7 +638,6 @@
       state.currentStep = -1;
       el.playBtn.innerHTML = '▶ PLAY';
       el.grid.querySelectorAll('.cell.playing').forEach(c => c.classList.remove('playing'));
-      // Beim Stop auch laufende Open-HH abwürgen
       chokeOpenHH();
       rebuildTabs();
       return;
@@ -572,9 +655,6 @@
   }
   el.playBtn.addEventListener('click', togglePlay);
 
-  // ============================================================
-  // VEXFLOW NOTATION
-  // ============================================================
   const VF_MAP = {
     cr: { key: 'a/5/x2', voice: 'up' },
     ri: { key: 'f/5/x2', voice: 'up' },
@@ -645,7 +725,7 @@
         let upperHasOpen = false;
 
         TRACKS.forEach(t => {
-          if (!pattern.data[t.id][gStep]) return;
+          if (!(pattern.data[t.id][gStep] > 0)) return;
           const m = VF_MAP[t.id];
           if (!m) return;
           if (m.voice === 'up') {
@@ -768,7 +848,7 @@
 
     pdf.setFontSize(18);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('DR-25840 · toenchen Trackofaktor', margin, margin + 6);
+    pdf.text('DR-25840', margin, margin + 6);
     pdf.setFontSize(9);
     pdf.setFont('helvetica', 'normal');
     pdf.setTextColor(100);
